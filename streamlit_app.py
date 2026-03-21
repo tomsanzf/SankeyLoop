@@ -1,39 +1,39 @@
 import streamlit as st
-import networkx as nx
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
-# Constants for canvas width
-DEFAULT_CANVAS_WIDTH = 700
+# Data for Sankey diagram
+node_labels = ['A', 'B', 'C', 'D']
+node_values = [10, 20, 30, 40]
+source_indices = [0, 1, 0, 2, 3]
+destination_indices = [2, 2, 3, 3, 3]
 
-# Streamlit app
-st.title('Sankey Loop Visualization')
+# Initialize canvas width control
+canvas_width = st.sidebar.slider('Canvas Width', min_value=400, max_value=1000, value=700)
 
-# Control for canvas width
-def control_canvas_width():
-    canvas_width = st.slider('Canvas Width', min_value=500, max_value=1200, value=DEFAULT_CANVAS_WIDTH)
-    st.write(f"Canvas Width: {canvas_width}")
-    return canvas_width
+# Function to draw Sankey diagram
+def draw_sankey():
+    fig = go.Figure(go.Sankey(
+        node=dict(
+            pad=15,
+            thickness=20,
+            line=dict(color='black', width=0.5),
+            label=node_labels,
+            color='blue'
+        ),
+        link=dict(
+            source=source_indices,
+            target=destination_indices,
+            value=node_values,
+            color='orange'
+        )
+    ))
 
-# Real-time slider updates with on_change callbacks
-def update_params():
-    # Update parameters based on slider changes...
-    st.write("Parameters updated!")
+    # Set layout width
+    fig.update_layout(width=canvas_width, height=400)
+    st.plotly_chart(fig)
 
-# Preserve node positions during parameter changes
-# Assuming a function to render nodes is defined
-def render_graph(G, positions):
-    plt.figure(figsize=(10, 7))
-    nx.draw(G, pos=positions, with_labels=True)
-    plt.show()
-
-# Main logic
-canvas_width = control_canvas_width()
-
-# Example of a graph
-G = nx.Graph()  
-G.add_edges_from([(1, 2), (2, 3), (3, 1)])  
-positions = nx.spring_layout(G)
-
-# Use Streamlit to display the graph
-update_params()
-render_graph(G, positions)
+# Callback for real-time updates
+if st.sidebar.button('Update Diagram'):
+    draw_sankey()
+else:
+    draw_sankey()  # Initial draw
