@@ -2,36 +2,79 @@ import streamlit as st
 import plotly.graph_objects as go
 import re
 
-# -- Page Setup --
-st.set_page_config(layout="wide", page_title="Sankey Gen 2.0")
-st.title("📊 Sankey Gen 2.0")
+# -- 1. Page Configuration --
+st.set_page_config(layout="wide", page_title="SankeyLoop")
 
-# 1. SIDEBAR FOR UI
+# -- 2. Theme & Title --
+# Custom CSS to handle the background toggle and hide standard UI clutter
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("SankeyLoop")
+
+# -- 3. Sidebar Parameters --
 with st.sidebar:
     st.header("Settings")
     
-    # Connect these to the variables below
-    node_opacity = st.slider("Link Opacity", 0.1, 1.0, 0.4)
-    orientation_label = st.radio("Orientation", ["Horizontal", "Vertical"])
-    orientation_setting = "h" if orientation_label == "Horizontal" else "v"
+    # Theme Toggle
+    theme_mode = st.radio("Background Theme", ["Light", "Dark"])
+    bg_color = "white" if theme_mode == "Light" else "#121212"
+    text_color = "#1e293b" if theme_mode == "Light" else "white"
     
     st.divider()
-    st.subheader("Node Styling")
-    node_pad = st.slider("Node Padding", 10, 100, 40)
-    node_thickness = st.slider("Node Thickness", 10, 50, 20)
+    
+    # Flow & Node Settings
+    node_opacity = st.slider("Link Opacity", 0.1, 1.0, 0.45)
+    node_spacing = st.slider("Node Spacing", 0, 100, 40) # Renamed from Padding
+    node_thickness = st.slider("Node Thickness", 5, 50, 20)
+    arrow_size = st.slider("Arrow Head Size", 0, 20, 10)
+    
+    st.divider()
+    
+    # Orientation & Units
+    orientation_label = st.radio("Flow Direction", ["Horizontal", "Vertical"])
+    orientation_setting = "h" if orientation_label == "Horizontal" else "v"
     value_unit = st.text_input("Value Unit", "kW")
+    
+    st.divider()
+    
+    # Figure Size
+    st.subheader("Canvas Size")
+    fig_height = st.number_input("Figure Height (px)", min_value=300, max_value=2000, value=700)
 
-# 2. INPUT AREA
+# -- 4. Default Data & Input Area --
+default_data = """Steam [88] HX1 #FF0000
+HX1 [88] Tank1 #FFD700
+Steam [50] HX2 #FF0000
+Tank1 [200] Tank2 #FFD700
+HX2 [50] Tank2 #FFA100
+Tank2 [250] HX3 #FFCC00
+HX3 [250] Chiller #C812BF
+Elec [100] Chiller #00FF00
+Chiller [263] Cooling Tower #2858B4
+Tank3 [100] Cooling Tower #05B1EA
+Chiller [88] HP #2858B4
+Elec [25] HP #00FF00
+HP [113] Tank1 #FFD700"""
+
 sankey_input_text = st.text_area(
-    "Paste your data here (Source [Value] Target #Hex)", 
-    placeholder="Wages [5000] Budget #22c55e",
-    height=300
+    "Data Input (Format: Source [Value] Target #Hex)", 
+    value=default_data,
+    height=300,
+    help="Diagram updates automatically when you click outside this box or hit Ctrl+Enter."
 )
 
-# 3. HELPER FUNCTIONS
+# -- 5. Helper Functions --
 def hex_to_rgba(hex_code, opacity):
-    """Converts #RRGGBB to rgba(r, g, b, opacity)"""
     hex_code = hex_code.lstrip('#')
+    # Support 3-digit hex
+    if len(hex_code) == 3:
+        hex_code = ''.join([c*2 for c in hex_code])
     r, g, b = tuple(int(hex_code[i:i+2], 16) for i in (0, 2, 4))
     return f'rgba({r}, {g}, {b}, {opacity})'
 
@@ -46,7 +89,7 @@ def parse_sankey_data(text, opacity):
         if not line or line.startswith('#'): continue
 
         # Regex: Source [Value] Target #Hex
-        match = re.match(r'(.+?)\s*\[(\d+)\]\s*(.+?)(?:\s*#([0-9a-fA-F]{6}))?$', line)
+        match = re.match(r'(.+?)\s*\[(\d+)\]\s*(.+?)(?:\s*#([0-9a-fA-F]{3,6}))?$', line)
         if match:
             s_name, val, t_name, hex_c = match.group(1).strip(), int(match.group(2)), match.group(3).strip(), match.group(4)
 
@@ -58,57 +101,52 @@ def parse_sankey_data(text, opacity):
             sources.append(label_to_index[s_name])
             targets.append(label_to_index[t_name])
             values.append(val)
-            
-            # Apply the opacity slider to the colors
-            if hex_c:
-                colors.append(hex_to_rgba(hex_c, opacity))
-            else:
-                colors.append(f'rgba(0,0,0,{opacity/2})') # Default dim gray
+            colors.append(hex_to_rgba(hex_c, opacity) if hex_c else f'rgba(150,150,150,{opacity})')
 
     return sources, targets, values, unique_labels, colors
 
-# 4. LOGIC & RENDERING
+# -- 6. Processing & Drawing --
 if sankey_input_text:
     try:
         src, tgt, val, labels, link_colors = parse_sankey_data(sankey_input_text, node_opacity)
 
-        # Calculate flows for labels
-        node_in = [0] * len(labels)
-        node_out = [0] * len(labels)
+        # Calculate Flow Labels
+        node_in, node_out = [0]*len(labels), [0]*len(labels)
         for i in range(len(src)):
             node_out[src[i]] += val[i]
             node_in[tgt[i]] += val[i]
 
-        updated_labels = [
-            f"{l}<br>{max(node_in[i], node_out[i])} {value_unit}" 
-            for i, l in enumerate(labels)
-        ]
+        updated_labels = [f"{l}<br>{max(node_in[i], node_out[i])} {value_unit}" for i, l in enumerate(labels)]
 
-        # Build Plotly Figure
+        # Build Figure
         fig = go.Figure(data=[go.Sankey(
             orientation = orientation_setting,
             node = dict(
-                pad = node_pad,
+                pad = node_spacing,
                 thickness = node_thickness,
                 label = updated_labels,
-                color = "#1e293b", # Professional dark nodes
-                line = dict(color = "white", width = 0.5)
+                color = "#2563eb" if theme_mode == "Light" else "#3b82f6",
+                line = dict(color = bg_color, width = 1)
             ),
             link = dict(
                 source = src,
                 target = tgt,
                 value = val,
                 color = link_colors,
-                hovertemplate = f'<b>%{{source.label}}</b> → <b>%{{target.label}}</b><br>Value: %{{value}} {value_unit}<extra></extra>'
+                arrowlen = arrow_size,
+                hovertemplate = f'%{{source.label}} → %{{target.label}}<br>Value: %{{value}} {value_unit}<extra></extra>'
             )
         )])
 
-        fig.update_layout(height=700, margin=dict(l=10, r=10, t=10, b=10))
+        fig.update_layout(
+            height=fig_height,
+            paper_bgcolor=bg_color,
+            plot_bgcolor=bg_color,
+            font_color=text_color,
+            margin=dict(l=20, r=20, t=20, b=20)
+        )
         
-        # Display in Streamlit
         st.plotly_chart(fig, use_container_width=True)
         
     except Exception as e:
-        st.error(f"Check your data format! Error: {e}")
-else:
-    st.info("Waiting for data... Paste your Sankeymatic code above to generate the diagram.")
+        st.error(f"⚠️ Error parsing data: {e}")
