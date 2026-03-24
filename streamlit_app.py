@@ -6,8 +6,7 @@ import re
 st.set_page_config(
     layout="wide", 
     page_title="SankeyLoop", 
-    page_icon="🔄",
-    initial_sidebar_state="expanded"
+    page_icon="🔄"
 )
 
 # -- 2. Theme & UI Styling --
@@ -17,7 +16,6 @@ st.markdown("""
     footer {visibility: hidden;}
     header {visibility: visible;}
     .stTitle { font-size: 2.5rem !important; font-weight: 800 !important; }
-    /* Style the loading widget */
     div[data-testid="stStatusWidget"] {
         background-color: #2563eb;
         color: white;
@@ -33,30 +31,33 @@ with st.sidebar:
     
     theme_mode = st.radio("Background Theme", ["Light", "Dark"])
     bg_color = "white" if theme_mode == "Light" else "#121212"
-    text_color = "#1e293b" if theme_mode == "Light" else "#f8fafc"
+    default_text = "#1e293b" if theme_mode == "Light" else "#f8fafc"
     
     st.divider()
     
-    st.subheader("Flow Appearance")
+    st.subheader("Flow & Node Appearance")
     node_opacity = st.slider("Link Opacity", 0.1, 1.0, 0.45)
-    arrow_size = st.slider("Arrow Head Size", 0, 30, 15)
-    
-    st.divider()
-    
-    st.subheader("Node Layout")
     node_spacing = st.slider("Vertical Spacing", 0, 100, 40)
     node_thickness = st.slider("Node Thickness", 5, 50, 20)
+    arrow_size = st.slider("Arrow Head Size", 0, 30, 15)
+
+    st.divider()
+
+    # NEW: Label Settings Section
+    st.subheader("Label Settings")
+    label_color = st.color_picker("Label Color", value=default_text)
+    label_size = st.slider("Label Font Size", 8, 30, 12)
     
-    # Arrangement Logic
+    st.divider()
+    
+    st.subheader("Layout Logic")
     arrangement_ui = st.selectbox(
-        "Arrangement Logic",
+        "Arrangement",
         ["Snap", "Perpendicular", "Freeform"],
-        index=0,
-        help="Snap: Compact layout. Perpendicular: Straight links. Freeform: Overlapping allowed."
+        index=0
     )
     node_arrangement = arrangement_ui.lower()
 
-    # Horizontal Alignment
     align_ui = st.radio(
         "Horizontal Alignment",
         ["Justify", "Left", "Center", "Right"],
@@ -92,11 +93,7 @@ Chiller [88] HP #2858B4
 Elec [25] HP #00FF00
 HP [113] Tank1 #FFD700"""
 
-sankey_input_text = st.text_area(
-    "Data Input", 
-    value=default_data,
-    height=300
-)
+sankey_input_text = st.text_area("Data Input", value=default_data, height=300)
 
 # -- 5. Helper Functions --
 def hex_to_rgba(hex_code, opacity):
@@ -149,7 +146,9 @@ if sankey_input_text:
                 label = updated_labels,
                 color = "#2563eb" if theme_mode == "Light" else "#60a5fa",
                 line = dict(color = bg_color, width = 1),
-                align = node_alignment
+                align = node_alignment,
+                # APPLY LABEL SETTINGS HERE
+                font = dict(color = label_color, size = label_size)
             ),
             link = dict(
                 source = src,
@@ -166,7 +165,7 @@ if sankey_input_text:
             height=fig_height,
             paper_bgcolor=bg_color,
             plot_bgcolor=bg_color,
-            font_color=text_color,
+            font_color=label_color, # Syncs global font color
             margin=dict(l=40, r=40, t=40, b=40)
         )
         
