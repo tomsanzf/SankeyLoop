@@ -10,7 +10,7 @@ st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
+    header {visibility: visible;}
     .stTitle { font-size: 2.5rem !important; font-weight: 800 !important; }
     </style>
     """, unsafe_allow_html=True)
