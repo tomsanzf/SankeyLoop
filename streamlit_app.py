@@ -137,18 +137,20 @@ if sankey_input_text:
 
         updated_labels = [f"{l}<br>{max(node_in[i], node_out[i])} {value_unit}" for i, l in enumerate(labels)]
 
+        # Build Figure
         fig = go.Figure(data=[go.Sankey(
             arrangement = node_arrangement,
             orientation = orientation_setting,
+            # FONT GOES HERE (Not inside node)
+            textfont = dict(color = label_color, size = label_size), 
             node = dict(
                 pad = node_spacing,
                 thickness = node_thickness,
                 label = updated_labels,
                 color = "#2563eb" if theme_mode == "Light" else "#60a5fa",
                 line = dict(color = bg_color, width = 1),
-                align = node_alignment,
-                # APPLY LABEL SETTINGS HERE
-                font = dict(color = label_color, size = label_size)
+                align = node_alignment
+                # font = ... was here, which caused the error. It's now removed.
             ),
             link = dict(
                 source = src,
@@ -165,7 +167,7 @@ if sankey_input_text:
             height=fig_height,
             paper_bgcolor=bg_color,
             plot_bgcolor=bg_color,
-            font_color=label_color, # Syncs global font color
+            font_color=label_color, 
             margin=dict(l=40, r=40, t=40, b=40)
         )
         
