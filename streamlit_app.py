@@ -3,14 +3,18 @@ import plotly.graph_objects as go
 import pandas as pd
 import re
 
-# -- 1. Page Configuration --
+# -- 1. Page Configuration (Keep this clean!) --
 st.set_page_config(
     layout="wide", 
     page_title="SankeyLoop", 
     page_icon="🔄"
 )
 
+# -- 2. The Version Spy (Put it here instead) --
+st.write(f"🛠️ Debug: Running Streamlit version: {st.__version__}")
+
 # -- 2. Theme & UI Styling --
+st.title("SankeyLoop")
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
