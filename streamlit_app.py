@@ -2,7 +2,6 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 import re
-from streamlit import column_config # Modern way to access table settings
 
 # -- 1. Page Configuration --
 st.set_page_config(
@@ -48,7 +47,7 @@ with st.sidebar:
     
     st.divider()
     
-    st.subheader("Layout")
+    st.subheader("Layout Logic")
     arrangement_ui = st.selectbox("Arrangement", ["Snap", "Perpendicular", "Freeform"], index=0)
     node_arrangement = arrangement_ui.lower()
 
@@ -118,56 +117,44 @@ HP [113] Tank1 #FFD700"""
     src, tgt, val, labels, link_colors = parse_sankey_text(sankey_input_text, node_opacity)
 
 else:
-    col1, col2 = st.columns([2, 1])
-    with col2:
-        use_picker = st.toggle("Enable Color Picker", value=True)
-    
-    # Starting Data
+    # Default Table Data
     df_init = pd.DataFrame([
         {"Source": "Steam", "Target": "HX1", "Value": 88, "Color": "#FF0000"},
         {"Source": "HX1", "Target": "Tank1", "Value": 88, "Color": "#FFD700"},
         {"Source": "Tank1", "Target": "Tank2", "Value": 200, "Color": "#FFD700"}
     ])
     
-    # THE FIX: Using CamelCase (NumberColumn, TextColumn, ColorColumn)
+    # Table Config using valid CamelCase names
     c_config = {
         "Value": st.column_config.NumberColumn("Value", format="%d", min_value=0),
         "Source": st.column_config.TextColumn("Source Node"),
-        "Target": st.column_config.TextColumn("Target Node")
+        "Target": st.column_config.TextColumn("Target Node"),
+        "Color": st.column_config.TextColumn("Hex Color (#)") # Text input for Hex
     }
     
-    if use_picker:
-        c_config["Color"] = st.column_config.ColorColumn("Link Color")
-    else:
-        c_config["Color"] = st.column_config.TextColumn("Hex Code (#)")
+    edited_df = st.data_editor(df_init, num_rows="dynamic", use_container_width=True, column_config=c_config)
     
-    edited_df = st.data_editor(
-        df_init, 
-        num_rows="dynamic", 
-        use_container_width=True, 
-        column_config=c_config
-    )
-    
-    # -- Process Table Data --
-    # Remove any rows that are completely empty to prevent errors
-    edited_df = edited_df.dropna(subset=['Source', 'Target', 'Value'])
-    
-    if not edited_df.empty:
-        all_nodes = pd.concat([edited_df['Source'], edited_df['Target']]).unique()
+    # Hex Helper Tool
+    with st.expander("🎨 Hex Color Helper"):
+        st.write("Pick a color to get its Hex code for the table above:")
+        picked_hex = st.color_picker("Pick a color", "#FF0000", label_visibility="collapsed")
+        st.code(picked_hex)
+
+    # Process Table Data safely
+    active_df = edited_df.dropna(subset=['Source', 'Target', 'Value'])
+    if not active_df.empty:
+        all_nodes = pd.concat([active_df['Source'], active_df['Target']]).unique()
         labels = list(all_nodes)
         l2i = {label: i for i, label in enumerate(labels)}
-        
-        src = [l2i[s] for s in edited_df['Source']]
-        tgt = [l2i[t] for t in edited_df['Target']]
-        val = edited_df['Value'].tolist()
-        # Handle colors safely
-        link_colors = [hex_to_rgba(c, node_opacity) for c in edited_df['Color']]
+        src = [l2i[s] for s in active_df['Source']]
+        tgt = [l2i[t] for t in active_df['Target']]
+        val = active_df['Value'].tolist()
+        link_colors = [hex_to_rgba(c, node_opacity) for c in active_df['Color']]
     else:
-        # Fallback if the table is cleared out
         src, tgt, val, labels, link_colors = [], [], [], [], []
 
 # -- 6. Processing & Drawing --
-if labels: # Only try to draw if we actually have nodes!
+if labels:
     try:
         node_in, node_out = [0]*len(labels), [0]*len(labels)
         for i in range(len(src)):
@@ -198,6 +185,16 @@ if labels: # Only try to draw if we actually have nodes!
             margin=dict(l=40, r=40, t=40, b=40)
         )
         st.plotly_chart(fig, use_container_width=False)
+        
+        # Download Button Section
+        if input_mode == "Interactive Table":
+            st.download_button(
+                "📥 Download Table Data (CSV)",
+                active_df.to_csv(index=False),
+                "sankey_data.csv",
+                "text/csv"
+            )
+
     except Exception as e:
         st.error(f"⚠️ App logic error: {e}")
 else:
