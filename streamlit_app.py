@@ -122,23 +122,24 @@ else:
     with col2:
         use_picker = st.toggle("Enable Color Picker", value=True)
     
+    # Starting Data
     df_init = pd.DataFrame([
         {"Source": "Steam", "Target": "HX1", "Value": 88, "Color": "#FF0000"},
         {"Source": "HX1", "Target": "Tank1", "Value": 88, "Color": "#FFD700"},
         {"Source": "Tank1", "Target": "Tank2", "Value": 200, "Color": "#FFD700"}
     ])
     
-    # NEW 1.55.0 COMPATIBLE CONFIG (using snake_case)
+    # THE FIX: Using CamelCase (NumberColumn, TextColumn, ColorColumn)
     c_config = {
-        "Value": column_config.number_column(format="%d", min_value=0),
-        "Source": column_config.text_column("Source Node"),
-        "Target": column_config.text_column("Target Node")
+        "Value": st.column_config.NumberColumn("Value", format="%d", min_value=0),
+        "Source": st.column_config.TextColumn("Source Node"),
+        "Target": st.column_config.TextColumn("Target Node")
     }
     
     if use_picker:
-        c_config["Color"] = column_config.color_column("Link Color")
+        c_config["Color"] = st.column_config.ColorColumn("Link Color")
     else:
-        c_config["Color"] = column_config.text_column("Hex Code (#)")
+        c_config["Color"] = st.column_config.TextColumn("Hex Code (#)")
     
     edited_df = st.data_editor(
         df_init, 
@@ -147,45 +148,57 @@ else:
         column_config=c_config
     )
     
-    # Process Table Data
-    all_nodes = pd.concat([edited_df['Source'], edited_df['Target']]).unique()
-    labels = list(all_nodes)
-    l2i = {label: i for i, label in enumerate(labels)}
-    src = [l2i[s] for s in edited_df['Source']]
-    tgt = [l2i[t] for t in edited_df['Target']]
-    val = edited_df['Value'].tolist()
-    link_colors = [hex_to_rgba(c, node_opacity) for c in edited_df['Color']]
+    # -- Process Table Data --
+    # Remove any rows that are completely empty to prevent errors
+    edited_df = edited_df.dropna(subset=['Source', 'Target', 'Value'])
+    
+    if not edited_df.empty:
+        all_nodes = pd.concat([edited_df['Source'], edited_df['Target']]).unique()
+        labels = list(all_nodes)
+        l2i = {label: i for i, label in enumerate(labels)}
+        
+        src = [l2i[s] for s in edited_df['Source']]
+        tgt = [l2i[t] for t in edited_df['Target']]
+        val = edited_df['Value'].tolist()
+        # Handle colors safely
+        link_colors = [hex_to_rgba(c, node_opacity) for c in edited_df['Color']]
+    else:
+        # Fallback if the table is cleared out
+        src, tgt, val, labels, link_colors = [], [], [], [], []
 
 # -- 6. Processing & Drawing --
-try:
-    node_in, node_out = [0]*len(labels), [0]*len(labels)
-    for i in range(len(src)):
-        node_out[src[i]] += val[i]
-        node_in[tgt[i]] += val[i]
+if labels: # Only try to draw if we actually have nodes!
+    try:
+        node_in, node_out = [0]*len(labels), [0]*len(labels)
+        for i in range(len(src)):
+            node_out[src[i]] += val[i]
+            node_in[tgt[i]] += val[i]
 
-    updated_labels = [f"{l}<br>{max(node_in[i], node_out[i])} {value_unit}" for i, l in enumerate(labels)]
+        updated_labels = [f"{l}<br>{max(node_in[i], node_out[i])} {value_unit}" for i, l in enumerate(labels)]
 
-    fig = go.Figure(data=[go.Sankey(
-        arrangement = node_arrangement,
-        orientation = orientation_setting,
-        textfont = dict(color = label_color, size = label_size),
-        node = dict(
-            pad = node_spacing, thickness = node_thickness, label = updated_labels,
-            color = "#2563eb" if theme_mode == "Light" else "#60a5fa",
-            line = dict(color = bg_color, width = 1), align = node_alignment
-        ),
-        link = dict(
-            source = src, target = tgt, value = val, color = link_colors,
-            arrowlen = arrow_size,
-            hovertemplate = f'%{{source.label}} → %{{target.label}}<br>Value: %{{value}} {value_unit}<extra></extra>'
+        fig = go.Figure(data=[go.Sankey(
+            arrangement = node_arrangement,
+            orientation = orientation_setting,
+            textfont = dict(color = label_color, size = label_size),
+            node = dict(
+                pad = node_spacing, thickness = node_thickness, label = updated_labels,
+                color = "#2563eb" if theme_mode == "Light" else "#60a5fa",
+                line = dict(color = bg_color, width = 1), align = node_alignment
+            ),
+            link = dict(
+                source = src, target = tgt, value = val, color = link_colors,
+                arrowlen = arrow_size,
+                hovertemplate = f'%{{source.label}} → %{{target.label}}<br>Value: %{{value}} {value_unit}<extra></extra>'
+            )
+        )])
+
+        fig.update_layout(
+            width=fig_width, height=fig_height,
+            paper_bgcolor=bg_color, plot_bgcolor=bg_color,
+            margin=dict(l=40, r=40, t=40, b=40)
         )
-    )])
-
-    fig.update_layout(
-        width=fig_width, height=fig_height,
-        paper_bgcolor=bg_color, plot_bgcolor=bg_color,
-        margin=dict(l=40, r=40, t=40, b=40)
-    )
-    st.plotly_chart(fig, use_container_width=False)
-except Exception as e:
-    st.error(f"⚠️ App logic error: {e}")
+        st.plotly_chart(fig, use_container_width=False)
+    except Exception as e:
+        st.error(f"⚠️ App logic error: {e}")
+else:
+    st.info("Start adding data to the table or paste text to see your SankeyLoop!")
