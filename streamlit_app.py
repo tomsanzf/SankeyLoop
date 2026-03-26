@@ -16,7 +16,7 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: visible;}
-    .stTitle { font-size: 2.5rem !important; font-weight: 800 !important; }
+    .stTitle { font-size: 2.5rem !important; font-weight: 800 !important; color: #1e293b; }
     div[data-testid="stStatusWidget"] { background-color: #2563eb; color: white; }
     </style>
     """, unsafe_allow_html=True)
@@ -29,7 +29,7 @@ with st.sidebar:
     
     theme_mode = st.radio("Background Theme", ["Light", "Dark"])
     bg_color = "white" if theme_mode == "Light" else "#121212"
-    default_text = "#1e293b" if theme_mode == "Light" else "#f8fafc"
+    default_text_color = "#1e293b" if theme_mode == "Light" else "#f8fafc"
     
     st.divider()
     
@@ -42,7 +42,7 @@ with st.sidebar:
     st.divider()
 
     st.subheader("Labels")
-    label_color = st.color_picker("Font Color", value=default_text)
+    label_color = st.color_picker("Font Color", value=default_text_color)
     label_size = st.slider("Font Size", 8, 30, 12)
     
     st.divider()
@@ -67,7 +67,25 @@ with st.sidebar:
     fig_width = st.number_input("Width (px)", min_value=300, max_value=3000, value=1200)
     fig_height = st.number_input("Height (px)", min_value=300, max_value=2000, value=700)
 
-# -- 4. Helper Functions --
+# -- 4. Shared Data Logic --
+# Centralizing the data so both inputs show the same example
+raw_data_list = [
+    {"Source": "Steam", "Target": "HX1", "Value": 88, "Color": "#FF0000"},
+    {"Source": "HX1", "Target": "Tank1", "Value": 88, "Color": "#FFD700"},
+    {"Source": "Steam", "Target": "HX2", "Value": 50, "Color": "#FF0000"},
+    {"Source": "Tank1", "Target": "Tank2", "Value": 200, "Color": "#FFD700"},
+    {"Source": "HX2", "Target": "Tank2", "Value": 50, "Color": "#FFA100"},
+    {"Source": "Tank2", "Target": "HX3", "Value": 250, "Color": "#FFCC00"},
+    {"Source": "HX3", "Target": "Chiller", "Value": 250, "Color": "#C812BF"},
+    {"Source": "Elec", "Target": "Chiller", "Value": 100, "Color": "#00FF00"},
+    {"Source": "Chiller", "Target": "Cooling Tower", "Value": 263, "Color": "#2858B4"},
+    {"Source": "Tank3", "Target": "Cooling Tower", "Value": 100, "Color": "#05B1EA"},
+    {"Source": "Chiller", "Target": "HP", "Value": 88, "Color": "#2858B4"},
+    {"Source": "Elec", "Target": "HP", "Value": 25, "Color": "#00FF00"},
+    {"Source": "HP", "Target": "Tank1", "Value": 113, "Color": "#FFD700"}
+]
+
+# Helper Functions
 def hex_to_rgba(hex_code, opacity):
     if not hex_code or not isinstance(hex_code, str): return f'rgba(150,150,150,{opacity})'
     hex_code = hex_code.lstrip('#')
@@ -97,50 +115,29 @@ def parse_sankey_text(text, opacity):
 
 # -- 5. Data Input Section --
 st.subheader("Data Input")
-input_mode = st.radio("Input Method:", ["Interactive Table", "SankeyMatic Text"], horizontal=True)
+input_mode = st.radio("Input Method:", ["Interactive Table", "Text Input"], horizontal=True)
 
-if input_mode == "SankeyMatic Text":
-    default_text = """Steam [88] HX1 #FF0000
-HX1 [88] Tank1 #FFD700
-Steam [50] HX2 #FF0000
-Tank1 [200] Tank2 #FFD700
-HX2 [50] Tank2 #FFA100
-Tank2 [250] HX3 #FFCC00
-HX3 [250] Chiller #C812BF
-Elec [100] Chiller #00FF00
-Chiller [263] Cooling Tower #2858B4
-Tank3 [100] Cooling Tower #05B1EA
-Chiller [88] HP #2858B4
-Elec [25] HP #00FF00
-HP [113] Tank1 #FFD700"""
-    sankey_input_text = st.text_area("Paste Text", value=default_text, height=300)
+if input_mode == "Text Input":
+    # Convert list back to formatted text for the text area
+    text_repr = "\n".join([f"{d['Source']} [{d['Value']}] {d['Target']} {d['Color']}" for d in raw_data_list])
+    sankey_input_text = st.text_area("Flow Data", value=text_repr, height=300)
     src, tgt, val, labels, link_colors = parse_sankey_text(sankey_input_text, node_opacity)
 
 else:
-    # Default Table Data
-    df_init = pd.DataFrame([
-        {"Source": "Steam", "Target": "HX1", "Value": 88, "Color": "#FF0000"},
-        {"Source": "HX1", "Target": "Tank1", "Value": 88, "Color": "#FFD700"},
-        {"Source": "Tank1", "Target": "Tank2", "Value": 200, "Color": "#FFD700"}
-    ])
-    
-    # Table Config using valid CamelCase names
+    df_init = pd.DataFrame(raw_data_list)
     c_config = {
         "Value": st.column_config.NumberColumn("Value", format="%d", min_value=0),
         "Source": st.column_config.TextColumn("Source Node"),
         "Target": st.column_config.TextColumn("Target Node"),
-        "Color": st.column_config.TextColumn("Hex Color (#)") # Text input for Hex
+        "Color": st.column_config.TextColumn("Hex Color (#)")
     }
     
     edited_df = st.data_editor(df_init, num_rows="dynamic", use_container_width=True, column_config=c_config)
     
-    # Hex Helper Tool
-    with st.expander("🎨 Hex Color Helper"):
-        st.write("Pick a color to get its Hex code for the table above:")
-        picked_hex = st.color_picker("Pick a color", "#FF0000", label_visibility="collapsed")
+    with st.expander("🎨 Hex Color Picker"):
+        picked_hex = st.color_picker("Pick a color", "#2563eb", label_visibility="collapsed")
         st.code(picked_hex)
 
-    # Process Table Data safely
     active_df = edited_df.dropna(subset=['Source', 'Target', 'Value'])
     if not active_df.empty:
         all_nodes = pd.concat([active_df['Source'], active_df['Target']]).unique()
@@ -153,7 +150,7 @@ else:
     else:
         src, tgt, val, labels, link_colors = [], [], [], [], []
 
-# -- 6. Processing & Drawing --
+# -- 6. Drawing --
 if labels:
     try:
         node_in, node_out = [0]*len(labels), [0]*len(labels)
@@ -186,14 +183,8 @@ if labels:
         )
         st.plotly_chart(fig, use_container_width=False)
         
-        # Download Button Section
         if input_mode == "Interactive Table":
-            st.download_button(
-                "📥 Download Table Data (CSV)",
-                active_df.to_csv(index=False),
-                "sankey_data.csv",
-                "text/csv"
-            )
+            st.download_button("📥 Download CSV", active_df.to_csv(index=False), "sankey_data.csv", "text/csv")
 
     except Exception as e:
         st.error(f"⚠️ App logic error: {e}")
