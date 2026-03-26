@@ -121,20 +121,29 @@ else:
     with col2:
         use_picker = st.toggle("Enable Color Picker in Table", value=True)
     
-    # Starting Data for Table
     df_init = pd.DataFrame([
         {"Source": "Steam", "Target": "HX1", "Value": 88, "Color": "#FF0000"},
         {"Source": "HX1", "Target": "Tank1", "Value": 88, "Color": "#FFD700"},
         {"Source": "Tank1", "Target": "Tank2", "Value": 200, "Color": "#FFD700"}
     ])
     
-    # Table Config
-    column_config = {
-        "Value": st.column_config.NumberColumn(format="%d", min_value=0),
-        "Color": st.column_config.ColorColumn("Color Palette") if use_picker else st.column_config.TextColumn("Hex Color (#)")
+    # We create the config dictionary first
+    c_config = {
+        "Value": st.column_config.NumberColumn(format="%d", min_value=0)
     }
     
-    edited_df = st.data_editor(df_init, num_rows="dynamic", use_container_width=True, column_config=column_config)
+    # Add the Color/Text column based on the toggle
+    if use_picker:
+        c_config["Color"] = st.column_config.ColorColumn("Color Palette")
+    else:
+        c_config["Color"] = st.column_config.TextColumn("Hex Color (#)")
+    
+    edited_df = st.data_editor(
+        df_init, 
+        num_rows="dynamic", 
+        use_container_width=True, 
+        column_config=c_config
+    )
     
     # Process Table Data
     all_nodes = pd.concat([edited_df['Source'], edited_df['Target']]).unique()
