@@ -2,19 +2,16 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 import re
+from streamlit import column_config # Modern way to access table settings
 
-# -- 1. Page Configuration (Keep this clean!) --
+# -- 1. Page Configuration --
 st.set_page_config(
     layout="wide", 
     page_title="SankeyLoop", 
     page_icon="🔄"
 )
 
-# -- 2. The Version Spy (Put it here instead) --
-st.write(f"🛠️ Debug: Running Streamlit version: {st.__version__}")
-
 # -- 2. Theme & UI Styling --
-st.title("SankeyLoop")
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -123,7 +120,7 @@ HP [113] Tank1 #FFD700"""
 else:
     col1, col2 = st.columns([2, 1])
     with col2:
-        use_picker = st.toggle("Enable Color Picker in Table", value=True)
+        use_picker = st.toggle("Enable Color Picker", value=True)
     
     df_init = pd.DataFrame([
         {"Source": "Steam", "Target": "HX1", "Value": 88, "Color": "#FF0000"},
@@ -131,16 +128,17 @@ else:
         {"Source": "Tank1", "Target": "Tank2", "Value": 200, "Color": "#FFD700"}
     ])
     
-    # We create the config dictionary first
+    # NEW 1.55.0 COMPATIBLE CONFIG (using snake_case)
     c_config = {
-        "Value": st.column_config.NumberColumn(format="%d", min_value=0)
+        "Value": column_config.number_column(format="%d", min_value=0),
+        "Source": column_config.text_column("Source Node"),
+        "Target": column_config.text_column("Target Node")
     }
     
-    # Add the Color/Text column based on the toggle
     if use_picker:
-        c_config["Color"] = st.column_config.ColorColumn("Color Palette")
+        c_config["Color"] = column_config.color_column("Link Color")
     else:
-        c_config["Color"] = st.column_config.TextColumn("Hex Color (#)")
+        c_config["Color"] = column_config.text_column("Hex Code (#)")
     
     edited_df = st.data_editor(
         df_init, 
