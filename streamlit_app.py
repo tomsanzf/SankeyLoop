@@ -26,6 +26,8 @@ with st.sidebar:
     default_text_color = "#1e293b" if theme_mode == "Light" else "#f8fafc"
     
     st.divider()
+    
+    # --- THERMAL GRADIENT ---
     st.subheader("🔥 Thermal Gradient")
     col_h1, col_h2 = st.columns(2)
     with col_h1: high_val = st.number_input("High Temp", value=180.0)
@@ -40,6 +42,17 @@ with st.sidebar:
     with col_l2: low_col = st.color_picker("Low Color", "#0000FF") 
 
     st.divider()
+    
+    # --- LAYOUT & ALIGNMENT ---
+    st.subheader("Layout & Alignment")
+    arrangement_ui = st.selectbox("Vertical Arrangement", ["Snap", "Perpendicular", "Freeform"], index=0)
+    node_arrangement = arrangement_ui.lower()
+
+    align_ui = st.radio("Horizontal Alignment", ["Justify", "Left", "Center", "Right"], horizontal=True)
+    node_alignment = align_ui.lower()
+
+    st.divider()
+
     st.subheader("Appearance")
     node_opacity = st.slider("Link Opacity", 0.1, 1.0, 0.45)
     node_spacing = st.slider("Vertical Spacing", 0, 100, 40)
@@ -52,13 +65,12 @@ with st.sidebar:
     fig_width = st.number_input("Width (px)", value=1200)
     fig_height = st.number_input("Height (px)", value=800)
 
-# -- 4. Bulletproof Logic Functions --
+# -- 4. Logic Functions --
 
 def safe_float(val):
-    """Converts strings with commas or periods to float safely."""
+    """Handles Excel commas and periods for numeric values."""
     if val is None: return 0.0
     try:
-        # Convert to string, replace comma with period, and strip whitespace
         clean_val = str(val).replace(',', '.').strip()
         return float(clean_val)
     except (ValueError, TypeError):
@@ -84,23 +96,35 @@ def get_final_color(input_val):
     if clean_str == "elec": return f"rgba(0, 200, 0, {node_opacity})"
     if clean_str == "black": return f"rgba(0, 0, 0, {node_opacity})"
     if clean_str.startswith('#'):
-        rgb = hex_to_rgb(clean_str)
-        return f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {node_opacity})"
+        try:
+            rgb = hex_to_rgb(clean_str)
+            return f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {node_opacity})"
+        except: return f"rgba(150, 150, 150, {node_opacity})"
     
-    # Gradient Logic using the new safe_float function
     v = safe_float(input_val)
     if v >= mid_val: return interpolate_rgb(v, mid_val, high_val, mid_col, high_col)
     else: return interpolate_rgb(v, low_val, mid_val, low_col, mid_col)
 
-# -- 5. Data Input --
+# -- 5. Data Input Section --
 st.subheader("Data Input")
 input_mode = st.radio("Method:", ["Interactive Table", "Text Input"], horizontal=True)
 
+# Shared hero data
 hero_data = [
     {"Source": "Natural Gas", "Target": "Boiler", "Value": "400", "Color": "Black"},
-    {"Source": "Steam", "Target": "HX1", "Value": "88,5", "Color": "160"}, # Example with comma
+    {"Source": "Steam", "Target": "HX1", "Value": "88,5", "Color": "160"},
     {"Source": "HX1", "Target": "Tank1", "Value": "88,5", "Color": "85"},
-    {"Source": "Elec Grid", "Target": "Chiller", "Value": "100", "Color": "Elec"}
+    {"Source": "Steam", "Target": "HX2", "Value": "50", "Color": "160"},
+    {"Source": "Tank1", "Target": "Tank2", "Value": "200", "Color": "60"},
+    {"Source": "HX2", "Target": "Tank2", "Value": "50", "Color": "95"},
+    {"Source": "Tank2", "Target": "HX3", "Value": "250", "Color": "60"},
+    {"Source": "HX3", "Target": "Chiller", "Value": "250", "Color": "55"},
+    {"Source": "Elec Grid", "Target": "Chiller", "Value": "100", "Color": "Elec"},
+    {"Source": "Chiller", "Target": "Cooling Tower", "Value": "263", "Color": "35"},
+    {"Source": "Tank3", "Target": "Cooling Tower", "Value": "100", "Color": "25"},
+    {"Source": "Chiller", "Target": "HP", "Value": "88", "Color": "35"},
+    {"Source": "Elec Grid", "Target": "HP", "Value": "25", "Color": "Elec"},
+    {"Source": "HP", "Target": "Tank1", "Value": "113", "Color": "75"}
 ]
 
 if input_mode == "Text Input":
@@ -118,10 +142,10 @@ if input_mode == "Text Input":
             src.append(l2i[s_n]); tgt.append(l2i[t_n])
             val.append(safe_float(v_str))
             link_colors.append(get_final_color(color_val))
+
 else:
-    # Use TextColumn for Value to allow commas during paste
     c_config = {
-        "Value": st.column_config.TextColumn("Value (supports , or .)"),
+        "Value": st.column_config.TextColumn("Value (Excel friendly)"),
         "Source": st.column_config.TextColumn("Source"),
         "Target": st.column_config.TextColumn("Target"),
         "Color": st.column_config.TextColumn("Color/Temp")
@@ -134,12 +158,11 @@ else:
         l2i = {label: i for i, label in enumerate(labels)}
         src = [l2i[s] for s in active_df['Source']]
         tgt = [l2i[t] for t in active_df['Target']]
-        # Final numeric conversion
         val = [safe_float(v) for v in active_df['Value']]
         link_colors = [get_final_color(c) for c in active_df['Color']]
     else: src, tgt, val, labels, link_colors = [], [], [], [], []
 
-# -- 6. Rendering --
+# -- 6. Drawing --
 if labels:
     try:
         node_in, node_out = [0]*len(labels), [0]*len(labels)
@@ -147,14 +170,31 @@ if labels:
             node_out[src[i]] += val[i]
             node_in[tgt[i]] += val[i]
         u_labels = [f"{l}<br>{max(node_in[i], node_out[i])} {value_unit}" for i, l in enumerate(labels)]
+        
         fig = go.Figure(data=[go.Sankey(
+            arrangement = node_arrangement,  # REINTEGRATED
             textfont = dict(color = label_color, size = label_size),
-            node = dict(pad = node_spacing, thickness = node_thickness, label = u_labels,
-                        color = "#2563eb" if theme_mode == "Light" else "#60a5fa",
-                        line = dict(color = bg_color, width = 1)),
-            link = dict(source = src, target = tgt, value = val, color = link_colors, arrowlen = arrow_size)
+            node = dict(
+                pad = node_spacing, 
+                thickness = node_thickness, 
+                label = u_labels,
+                align = node_alignment,      # REINTEGRATED
+                color = "#2563eb" if theme_mode == "Light" else "#60a5fa",
+                line = dict(color = bg_color, width = 1)
+            ),
+            link = dict(
+                source = src, 
+                target = tgt, 
+                value = val, 
+                color = link_colors, 
+                arrowlen = arrow_size
+            )
         )])
         fig.update_layout(width=fig_width, height=fig_height, paper_bgcolor=bg_color, margin=dict(l=40, r=40, t=40, b=40))
         st.plotly_chart(fig, use_container_width=False)
+        
+        if input_mode == "Interactive Table":
+            st.download_button("📥 Download CSV", active_df.to_csv(index=False), "sankey_data.csv", "text/csv")
+
     except Exception as e:
-        st.error(f"⚠️ Logic error: {e}")
+        st.error(f"⚠️ App logic error: {e}")
