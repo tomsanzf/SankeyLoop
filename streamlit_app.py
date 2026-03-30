@@ -25,7 +25,7 @@ class SankeyConfig:
     h_margin: int = 50
     node_spacing: int = 50
     node_thickness: int = 20
-    node_opacity: float = 0.45
+    node_opacity: float = 0.7
     arrow_size: int = 15
     label_size: int = 12
     label_color: str = "#1e293b"
