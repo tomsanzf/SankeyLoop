@@ -73,39 +73,44 @@ with st.sidebar:
     st.divider()
     st.subheader("🔥 Thermal Gradient")
     col_h1, col_h2 = st.columns(2)
-    with col_h1: cfg.high_val = st.number_input("High Threshold", value=180.0)
-    with col_h2: cfg.high_col = st.color_picker("High Color", "#FF0000")
+    with col_h1: cfg.high_val = st.number_input("High Threshold", value=cfg.high_val)
+    with col_h2: cfg.high_col = st.color_picker("High Color", cfg.high_col)
     col_m1, col_m2 = st.columns(2)
-    with col_m1: cfg.mid_val = st.number_input("Mid Threshold", value=45.0)
-    with col_m2: cfg.mid_col = st.color_picker("Mid Color", "#FFA500")
+    with col_m1: cfg.mid_val = st.number_input("Mid Threshold", value=cfg.mid_val)
+    with col_m2: cfg.mid_col = st.color_picker("Mid Color", cfg.mid_col)
     col_l1, col_l2 = st.columns(2)
-    with col_l1: cfg.low_val = st.number_input("Low Threshold", value=5.0)
-    with col_l2: cfg.low_col = st.color_picker("Low Color", "#0000FF")
+    with col_l1: cfg.low_val = st.number_input("Low Threshold", value=cfg.low_val)
+    with col_l2: cfg.low_col = st.color_picker("Low Color", cfg.low_col)
 
     st.divider()
     st.subheader("Layout & Scaling")
-    align_ui = st.radio("Node Alignment", ["Justify", "Left", "Center", "Right"], index=2, horizontal=True)
+    _align_options = ["Justify", "Left", "Center", "Right"]
+    align_ui = st.radio("Node Alignment", _align_options,
+                        index=_align_options.index(cfg.node_alignment.capitalize()),
+                        horizontal=True)
     cfg.node_alignment = align_ui.lower()
-    arrangement_ui = st.selectbox("Node Arrangement", ["Snap", "Perpendicular", "Freeform"], index=0)
+    _arrangement_options = ["Snap", "Perpendicular", "Freeform"]
+    arrangement_ui = st.selectbox("Node Arrangement", _arrangement_options,
+                                  index=_arrangement_options.index(cfg.node_arrangement.capitalize()))
     cfg.node_arrangement = arrangement_ui.lower()
 
-    cfg.v_margin = st.slider("Vertical Margin (Scaling)", 0, 500, 100)
-    cfg.h_margin = st.slider("Horizontal Margin (Padding)", 0, 500, 50)
+    cfg.v_margin = st.slider("Vertical Margin (Scaling)", 0, 500, cfg.v_margin)
+    cfg.h_margin = st.slider("Horizontal Margin (Padding)", 0, 500, cfg.h_margin)
 
     st.divider()
     st.subheader("Visual Geometry")
-    cfg.node_spacing   = st.slider("Node Pad (Gap)", 0, 200, 50)
-    cfg.node_thickness = st.slider("Node Width", 5, 50, 20)
-    cfg.node_opacity   = st.slider("Link Opacity", 0.1, 1.0, 0.45)
-    cfg.arrow_size     = st.slider("Arrow Head Size", 0, 50, 15)
+    cfg.node_spacing   = st.slider("Node Pad (Gap)", 0, 200, cfg.node_spacing)
+    cfg.node_thickness = st.slider("Node Width", 5, 50, cfg.node_thickness)
+    cfg.node_opacity   = st.slider("Link Opacity", 0.1, 1.0, cfg.node_opacity)
+    cfg.arrow_size     = st.slider("Arrow Head Size", 0, 50, cfg.arrow_size)
 
     st.divider()
     st.subheader("Typography & Canvas")
-    cfg.label_size  = st.slider("Font Size", 8, 30, 12)
+    cfg.label_size  = st.slider("Font Size", 8, 30, cfg.label_size)
     cfg.label_color = st.color_picker("Font Color", value=cfg.label_color)
-    cfg.fig_width   = st.number_input("Canvas Width (px)", value=1200)
-    cfg.fig_height  = st.number_input("Canvas Height (px)", value=800)
-    cfg.value_unit  = st.text_input("Value Unit", "kW")
+    cfg.fig_width   = st.number_input("Canvas Width (px)", value=cfg.fig_width)
+    cfg.fig_height  = st.number_input("Canvas Height (px)", value=cfg.fig_height)
+    cfg.value_unit  = st.text_input("Value Unit", cfg.value_unit)
 
 
 # ==========================================
