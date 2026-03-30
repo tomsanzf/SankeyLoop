@@ -56,7 +56,7 @@ with st.sidebar:
     st.subheader("Visual Geometry")
     node_spacing = st.slider("Node Pad (Gap)", 0, 200, 50) 
     node_thickness = st.slider("Node Width", 5, 50, 20)
-    node_opacity = st.slider("Link Opacity", 0.1, 1.0, 0.45)
+    node_opacity = st.slider("Link Opacity", 0.1, 1.0, 0.7)
     arrow_size = st.slider("Arrow Head Size", 0, 50, 15)
     
     st.divider()
