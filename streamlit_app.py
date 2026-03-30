@@ -46,11 +46,14 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Visuals & Scaling")
-    # THE "SCALE" TRICK: Vertical Margin
+    # NEW: Horizontal Margin and Vertical Margin (Scale)
     v_margin = st.slider("Vertical Margin (Scale)", 0, 500, 100)
+    h_margin = st.slider("Horizontal Margin", 0, 500, 40)
     node_spacing = st.slider("Node Spacing (Gap)", 0, 200, 50) 
     node_opacity = st.slider("Link Opacity", 0.1, 1.0, 0.45)
     node_thickness = st.slider("Node Thickness", 5, 50, 20)
+    # RESTORED: Arrow Head Size
+    arrow_size = st.slider("Arrow Head Size", 0, 50, 15)
     
     st.divider()
     st.subheader("Labels")
@@ -159,19 +162,22 @@ if labels:
             ),
             link = dict(
                 source = src, target = tgt, value = val, color = link_colors,
+                arrowlen = arrow_size, # RESTORED
                 customdata = labels,
                 hovertemplate = '<b>%{source.customdata[0]}</b> → <b>%{target.customdata[0]}</b><br>%{value:.0f} ' + value_unit + '<extra></extra>'
             )
         )])
         
-        # APPLYING THE VERTICAL MARGIN HERE
+        # APPLYING MARGINS FOR SCALING & SPACING
         fig.update_layout(
             width=fig_width, 
             height=fig_height, 
             paper_bgcolor=bg_color, 
             plot_bgcolor=bg_color, 
-            margin=dict(l=40, r=40, t=v_margin, b=v_margin)
+            margin=dict(l=h_margin, r=h_margin, t=v_margin, b=v_margin)
         )
         st.plotly_chart(fig, use_container_width=False)
+        if input_mode == "Interactive Table":
+            st.download_button("📥 Download CSV", active_df.to_csv(index=False), "sankey_data.csv", "text/csv")
     except Exception as e:
         st.error(f"⚠️ App logic error: {e}")
