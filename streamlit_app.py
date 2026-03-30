@@ -38,25 +38,32 @@ with st.sidebar:
     with col_l2: low_col = st.color_picker("L-Col", "#0000FF") 
 
     st.divider()
-    st.subheader("Layout")
+    st.subheader("Layout & Alignment")
+    align_ui = st.radio("Alignment", ["Justify", "Left", "Center", "Right"], index=2, horizontal=True)
+    node_alignment = align_ui.lower()
     arrangement_ui = st.selectbox("Arrangement", ["Snap", "Perpendicular", "Freeform"], index=0)
     node_arrangement = arrangement_ui.lower()
-    align_ui = st.radio("Alignment", ["Justify", "Left", "Center", "Right"], horizontal=True)
-    node_alignment = align_ui.lower()
 
     st.divider()
-    st.subheader("Visuals")
-    node_opacity = st.slider("Opacity", 0.1, 1.0, 0.45)
-    node_spacing = st.slider("Spacing", 0, 100, 40)
-    node_thickness = st.slider("Thickness", 5, 50, 20)
+    st.subheader("Visuals & Scaling")
+    # THE "SCALE" TRICK: Vertical Margin
+    v_margin = st.slider("Vertical Margin (Scale)", 0, 500, 100)
+    node_spacing = st.slider("Node Spacing (Gap)", 0, 200, 50) 
+    node_opacity = st.slider("Link Opacity", 0.1, 1.0, 0.45)
+    node_thickness = st.slider("Node Thickness", 5, 50, 20)
+    
+    st.divider()
+    st.subheader("Labels")
     label_size = st.slider("Font Size", 8, 30, 12)
     label_color = st.color_picker("Font Color", value=default_text_color)
     
+    st.divider()
+    st.subheader("Canvas Size")
+    fig_width = st.number_input("Canvas Width (px)", value=1200)
+    fig_height = st.number_input("Canvas Height (px)", value=800)
     value_unit = st.text_input("Unit", "kW")
-    fig_width = st.number_input("Width (px)", value=1200)
-    fig_height = st.number_input("Height (px)", value=800)
 
-# -- 4. Core Logic --
+# -- 4. Logic Functions --
 def safe_float(val):
     if val is None: return 0.0
     try:
@@ -96,8 +103,8 @@ input_mode = st.radio("Method:", ["Interactive Table", "Text Input"], horizontal
 
 hero_data = [
     {"Source": "Natural Gas", "Target": "Boiler", "Value": "400", "Color": "Black"},
-    {"Source": "Steam", "Target": "HX1", "Value": "88,333", "Color": "160"},
-    {"Source": "HX1", "Target": "Tank1", "Value": "88,333", "Color": "85"},
+    {"Source": "Steam", "Target": "HX1", "Value": "88,3", "Color": "160"},
+    {"Source": "HX1", "Target": "Tank1", "Value": "88,3", "Color": "85"},
     {"Source": "Elec Grid", "Target": "Chiller", "Value": "100", "Color": "Elec"}
 ]
 
@@ -129,20 +136,15 @@ else:
         link_colors = [get_final_color(c) for c in active_df['Color']]
     else: src, tgt, val, labels, link_colors = [], [], [], [], []
 
-# -- 6. Polished Rendering --
+# -- 6. Drawing --
 if labels:
     try:
-        # Calculate sums for hover logic
         node_in, node_out = [0]*len(labels), [0]*len(labels)
         for i in range(len(src)):
             node_out[src[i]] += val[i]
             node_in[tgt[i]] += val[i]
         
-        # 1. Rounding labels to 0 decimals for the diagram
         u_labels = [f"{l}<br>{int(round(max(node_in[i], node_out[i]), 0))} {value_unit}" for i, l in enumerate(labels)]
-        
-        # 2. Store metadata in customdata for clean hovers
-        # Structure: [Clean Name, Total In, Total Out]
         node_metadata = [[labels[i], node_in[i], node_out[i]] for i in range(len(labels))]
 
         fig = go.Figure(data=[go.Sankey(
@@ -153,20 +155,23 @@ if labels:
                 align = node_alignment, color = "#2563eb" if theme_mode == "Light" else "#60a5fa",
                 line = dict(color = bg_color, width = 1),
                 customdata = node_metadata,
-                # Hover on Nodes: Name, Sum In, Sum Out
-                hovertemplate = '<b>%{customdata[0]}</b><br>Incoming: %{customdata[1]:.0f} ' + value_unit + '<br>Outgoing: %{customdata[2]:.0f} ' + value_unit + '<extra></extra>'
+                hovertemplate = '<b>%{customdata[0]}</b><br>In: %{customdata[1]:.0f}<br>Out: %{customdata[2]:.0f}<extra></extra>'
             ),
             link = dict(
                 source = src, target = tgt, value = val, color = link_colors,
-                # Hover on Links: Clean Names (Source -> Target) and the specific flow value
-                customdata = labels, # To help link template access names
-                hovertemplate = '<b>%{source.customdata[0]}</b> → <b>%{target.customdata[0]}</b><br>Flow Value: %{value:.0f} ' + value_unit + '<extra></extra>'
+                customdata = labels,
+                hovertemplate = '<b>%{source.customdata[0]}</b> → <b>%{target.customdata[0]}</b><br>%{value:.0f} ' + value_unit + '<extra></extra>'
             )
         )])
         
-        fig.update_layout(width=fig_width, height=fig_height, paper_bgcolor=bg_color, margin=dict(l=40, r=40, t=40, b=40))
+        # APPLYING THE VERTICAL MARGIN HERE
+        fig.update_layout(
+            width=fig_width, 
+            height=fig_height, 
+            paper_bgcolor=bg_color, 
+            plot_bgcolor=bg_color, 
+            margin=dict(l=40, r=40, t=v_margin, b=v_margin)
+        )
         st.plotly_chart(fig, use_container_width=False)
-        if input_mode == "Interactive Table":
-            st.download_button("📥 Download CSV", active_df.to_csv(index=False), "sankey_data.csv", "text/csv")
     except Exception as e:
         st.error(f"⚠️ App logic error: {e}")
