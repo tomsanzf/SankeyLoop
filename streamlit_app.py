@@ -6,72 +6,67 @@ import re
 # -- 1. Page Configuration --
 st.set_page_config(layout="wide", page_title="SankeyLoop", page_icon="🔄")
 
-# -- 2. UI Styling --
+# -- 2. Global Styles --
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: visible;}
-    .stTitle { font-size: 2.5rem !important; font-weight: 800 !important; color: #1e293b; }
+    .stTitle { font-size: 2.2rem !important; font-weight: 700 !important; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("SankeyLoop")
 
-# -- 3. Sidebar Parameters --
+# -- 3. Operational Parameters --
 with st.sidebar:
-    st.header("Settings")
-    theme_mode = st.radio("Theme", ["Light", "Dark"])
+    st.header("Parameters")
+    theme_mode = st.radio("UI Theme", ["Light", "Dark"])
     bg_color = "white" if theme_mode == "Light" else "#121212"
     default_text_color = "#1e293b" if theme_mode == "Light" else "#f8fafc"
     
     st.divider()
-    st.subheader("🔥 Thermal Gradient")
+    st.subheader("Thermal Gradient Definition")
     col_h1, col_h2 = st.columns(2)
-    with col_h1: high_val = st.number_input("High", value=180.0)
-    with col_h2: high_col = st.color_picker("H-Col", "#FF0000") 
+    with col_h1: high_val = st.number_input("High Threshold", value=180.0)
+    with col_h2: high_col = st.color_picker("High Color", "#FF0000") 
     col_m1, col_m2 = st.columns(2)
-    with col_m1: mid_val = st.number_input("Mid", value=45.0)
-    with col_m2: mid_col = st.color_picker("M-Col", "#FFA500") 
+    with col_m1: mid_val = st.number_input("Mid Threshold", value=45.0)
+    with col_m2: mid_col = st.color_picker("Mid Color", "#FFA500") 
     col_l1, col_l2 = st.columns(2)
-    with col_l1: low_val = st.number_input("Low", value=5.0)
-    with col_l2: low_col = st.color_picker("L-Col", "#0000FF") 
+    with col_l1: low_val = st.number_input("Low Threshold", value=5.0)
+    with col_l2: low_col = st.color_picker("Low Color", "#0000FF") 
 
     st.divider()
-    st.subheader("Layout & Alignment")
-    align_ui = st.radio("Alignment", ["Justify", "Left", "Center", "Right"], index=2, horizontal=True)
+    st.subheader("Layout & Scaling")
+    align_ui = st.radio("Node Alignment", ["Justify", "Left", "Center", "Right"], index=2, horizontal=True)
     node_alignment = align_ui.lower()
-    arrangement_ui = st.selectbox("Arrangement", ["Snap", "Perpendicular", "Freeform"], index=0)
+    arrangement_ui = st.selectbox("Node Arrangement", ["Snap", "Perpendicular", "Freeform"], index=0)
     node_arrangement = arrangement_ui.lower()
-
+    v_margin = st.slider("Vertical Margin (Scaling)", 0, 500, 100)
+    h_margin = st.slider("Horizontal Margin", 0, 500, 50)
+    
     st.divider()
-    st.subheader("Visuals & Scaling")
-    # NEW: Horizontal Margin and Vertical Margin (Scale)
-    v_margin = st.slider("Vertical Margin (Scale)", 0, 500, 100)
-    h_margin = st.slider("Horizontal Margin", 0, 500, 40)
-    node_spacing = st.slider("Node Spacing (Gap)", 0, 200, 50) 
+    st.subheader("Visual Geometry")
+    node_spacing = st.slider("Node Pad", 0, 200, 50) 
+    node_thickness = st.slider("Node Width", 5, 50, 20)
     node_opacity = st.slider("Link Opacity", 0.1, 1.0, 0.45)
-    node_thickness = st.slider("Node Thickness", 5, 50, 20)
-    # RESTORED: Arrow Head Size
     arrow_size = st.slider("Arrow Head Size", 0, 50, 15)
     
     st.divider()
-    st.subheader("Labels")
+    st.subheader("Typography & Canvas")
     label_size = st.slider("Font Size", 8, 30, 12)
     label_color = st.color_picker("Font Color", value=default_text_color)
-    
-    st.divider()
-    st.subheader("Canvas Size")
     fig_width = st.number_input("Canvas Width (px)", value=1200)
     fig_height = st.number_input("Canvas Height (px)", value=800)
-    value_unit = st.text_input("Unit", "kW")
+    value_unit = st.text_input("Value Unit", "kW")
 
-# -- 4. Logic Functions --
+# -- 4. Functional Logic --
+
 def safe_float(val):
     if val is None: return 0.0
     try:
-        clean_val = str(val).replace(',', '.').strip()
-        return float(clean_val)
+        return float(str(val).replace(',', '.').strip())
     except: return 0.0
 
 def hex_to_rgb(hex_code):
@@ -86,7 +81,7 @@ def interpolate_rgb(val, min_v, max_v, color1, color2):
     res = tuple(int(rgb1[i] + (rgb2[i] - rgb1[i]) * f) for i in range(3))
     return f"rgba({res[0]}, {res[1]}, {res[2]}, {node_opacity})"
 
-def get_final_color(input_val):
+def get_link_color(input_val):
     if not input_val: return f"rgba(150, 150, 150, {node_opacity})"
     clean_str = str(input_val).strip().lower()
     if clean_str == "elec": return f"rgba(0, 200, 0, {node_opacity})"
@@ -100,46 +95,66 @@ def get_final_color(input_val):
     if v >= mid_val: return interpolate_rgb(v, mid_val, high_val, mid_col, high_col)
     else: return interpolate_rgb(v, low_val, mid_val, low_col, mid_col)
 
-# -- 5. Data Input --
-st.subheader("Data Input")
-input_mode = st.radio("Method:", ["Interactive Table", "Text Input"], horizontal=True)
+# -- 5. Data Handling --
 
-hero_data = [
+st.subheader("Data Input")
+input_mode = st.radio("Input Method:", ["Interactive Table", "Text Input"], horizontal=True)
+
+# Default dataset with a negative value to demonstrate the inversion logic
+default_dataset = [
     {"Source": "Natural Gas", "Target": "Boiler", "Value": "400", "Color": "Black"},
-    {"Source": "Steam", "Target": "HX1", "Value": "88,3", "Color": "160"},
-    {"Source": "HX1", "Target": "Tank1", "Value": "88,3", "Color": "85"},
+    {"Source": "Tank1", "Target": "Tank2", "Value": "-50,5", "Color": "60"}, # This will be inverted
+    {"Source": "Steam", "Target": "Process", "Value": "88,3", "Color": "160"},
     {"Source": "Elec Grid", "Target": "Chiller", "Value": "100", "Color": "Elec"}
 ]
 
+src, tgt, val, labels, link_colors = [], [], [], [], []
+l2i = {}
+
 if input_mode == "Text Input":
-    text_repr = "\n".join([f"{d['Source']} [{d['Value']}] {d['Target']} {d['Color']}" for d in hero_data])
-    sankey_input_text = st.text_area("Flow Data", value=text_repr, height=300)
-    lines = sankey_input_text.strip().split('\n')
-    src, tgt, val, labels, link_colors = [], [], [], [], []
-    l2i = {}
+    text_repr = "\n".join([f"{d['Source']} [{d['Value']}] {d['Target']} {d['Color']}" for d in default_dataset])
+    raw_input = st.text_area("Flow Specification", value=text_repr, height=300)
+    lines = raw_input.strip().split('\n')
     for line in lines:
         match = re.match(r'(.+?)\s*\[(.+?)\]\s*(.+?)(?:\s*(\S+))?$', line.strip())
         if match:
-            s_n, v_str, t_n, color_val = match.group(1).strip(), match.group(2), match.group(3).strip(), match.group(4)
-            for n in [s_n, t_n]:
+            s_name, v_str, t_name, color_val = match.group(1).strip(), match.group(2), match.group(3).strip(), match.group(4)
+            v = safe_float(v_str)
+            
+            # --- INVERSION LOGIC ---
+            if v < 0:
+                s_final, t_final, v_final = t_name, s_name, abs(v)
+            else:
+                s_final, t_final, v_final = s_name, t_name, v
+            
+            for n in [s_final, t_final]:
                 if n not in l2i: l2i[n] = len(labels); labels.append(n)
-            src.append(l2i[s_n]); tgt.append(l2i[t_n])
-            val.append(safe_float(v_str))
-            link_colors.append(get_final_color(color_val))
+            src.append(l2i[s_final]); tgt.append(l2i[t_final]); val.append(v_final)
+            link_colors.append(get_link_color(color_val))
 else:
-    c_config = {"Value": st.column_config.TextColumn("Value"), "Source": st.column_config.TextColumn("Source"), "Target": st.column_config.TextColumn("Target"), "Color": st.column_config.TextColumn("Color/Temp")}
-    edited_df = st.data_editor(pd.DataFrame(hero_data), num_rows="dynamic", use_container_width=True, column_config=c_config)
-    active_df = edited_df.dropna(subset=['Source', 'Target', 'Value'])
+    col_config = {"Value": st.column_config.TextColumn("Value"), "Source": st.column_config.TextColumn("Source"), "Target": st.column_config.TextColumn("Target"), "Color": st.column_config.TextColumn("Color/Temp")}
+    df = st.data_editor(pd.DataFrame(default_dataset), num_rows="dynamic", use_container_width=True, column_config=col_config)
+    active_df = df.dropna(subset=['Source', 'Target', 'Value'])
+    
     if not active_df.empty:
-        labels = list(pd.concat([active_df['Source'], active_df['Target']]).unique())
-        l2i = {label: i for i, label in enumerate(labels)}
-        src = [l2i[s] for s in active_df['Source']]
-        tgt = [l2i[t] for t in active_df['Target']]
-        val = [safe_float(v) for v in active_df['Value']]
-        link_colors = [get_final_color(c) for c in active_df['Color']]
-    else: src, tgt, val, labels, link_colors = [], [], [], [], []
+        # Pre-process for inversion
+        processed_rows = []
+        for _, row in active_df.iterrows():
+            s_name, t_name, v_str, c_val = str(row['Source']).strip(), str(row['Target']).strip(), row['Value'], row['Color']
+            v = safe_float(v_str)
+            if v < 0:
+                processed_rows.append({"S": t_name, "T": s_name, "V": abs(v), "C": c_val})
+            else:
+                processed_rows.append({"S": s_name, "T": t_name, "V": v, "C": c_val})
+        
+        for row in processed_rows:
+            for n in [row["S"], row["T"]]:
+                if n not in l2i: l2i[n] = len(labels); labels.append(n)
+            src.append(l2i[row["S"]]); tgt.append(l2i[row["T"]]); val.append(row["V"])
+            link_colors.append(get_link_color(row["C"]))
 
-# -- 6. Drawing --
+# -- 6. Visualization --
+
 if labels:
     try:
         node_in, node_out = [0]*len(labels), [0]*len(labels)
@@ -147,37 +162,28 @@ if labels:
             node_out[src[i]] += val[i]
             node_in[tgt[i]] += val[i]
         
-        u_labels = [f"{l}<br>{int(round(max(node_in[i], node_out[i]), 0))} {value_unit}" for i, l in enumerate(labels)]
-        node_metadata = [[labels[i], node_in[i], node_out[i]] for i in range(len(labels))]
+        display_labels = [f"{l}<br>{int(round(max(node_in[i], node_out[i]), 0))} {value_unit}" for i, l in enumerate(labels)]
+        meta = [[labels[i], node_in[i], node_out[i]] for i in range(len(labels))]
 
         fig = go.Figure(data=[go.Sankey(
             arrangement = node_arrangement,
             textfont = dict(color = label_color, size = label_size),
             node = dict(
-                pad = node_spacing, thickness = node_thickness, label = u_labels,
+                pad = node_spacing, thickness = node_thickness, label = display_labels,
                 align = node_alignment, color = "#2563eb" if theme_mode == "Light" else "#60a5fa",
                 line = dict(color = bg_color, width = 1),
-                customdata = node_metadata,
-                hovertemplate = '<b>%{customdata[0]}</b><br>In: %{customdata[1]:.0f}<br>Out: %{customdata[2]:.0f}<extra></extra>'
+                customdata = meta,
+                hovertemplate = '<b>%{customdata[0]}</b><br>Input: %{customdata[1]:.0f}<br>Output: %{customdata[2]:.0f}<extra></extra>'
             ),
             link = dict(
-                source = src, target = tgt, value = val, color = link_colors,
-                arrowlen = arrow_size, # RESTORED
+                source = src, target = tgt, value = val, color = link_colors, arrowlen = arrow_size,
                 customdata = labels,
-                hovertemplate = '<b>%{source.customdata[0]}</b> → <b>%{target.customdata[0]}</b><br>%{value:.0f} ' + value_unit + '<extra></extra>'
+                hovertemplate = '<b>%{source.customdata[0]}</b> → <b>%{target.customdata[0]}</b><br>Flow: %{value:.0f} ' + value_unit + '<extra></extra>'
             )
         )])
         
-        # APPLYING MARGINS FOR SCALING & SPACING
-        fig.update_layout(
-            width=fig_width, 
-            height=fig_height, 
-            paper_bgcolor=bg_color, 
-            plot_bgcolor=bg_color, 
-            margin=dict(l=h_margin, r=h_margin, t=v_margin, b=v_margin)
-        )
+        fig.update_layout(width=fig_width, height=fig_height, paper_bgcolor=bg_color, plot_bgcolor=bg_color,
+                          margin=dict(l=h_margin, r=h_margin, t=v_margin, b=v_margin))
         st.plotly_chart(fig, use_container_width=False)
-        if input_mode == "Interactive Table":
-            st.download_button("📥 Download CSV", active_df.to_csv(index=False), "sankey_data.csv", "text/csv")
     except Exception as e:
-        st.error(f"⚠️ App logic error: {e}")
+        st.error(f"Execution Error: {e}")
