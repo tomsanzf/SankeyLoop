@@ -2,8 +2,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 import re
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 # ==========================================
 # MODULE 1: CONFIGURATION DATACLASS
@@ -26,9 +25,11 @@ class SankeyConfig:
     node_spacing: int = 50
     node_thickness: int = 20
     node_opacity: float = 0.7
+    ghost_opacity: float = 0.25
     arrow_size: int = 15
     label_size: int = 12
     label_color: str = "#1e293b"
+    default_node_color: str = "#2563eb"
     fig_width: int = 1200
     fig_height: int = 800
     value_unit: str = "kW"
@@ -36,10 +37,6 @@ class SankeyConfig:
     @property
     def bg_color(self) -> str:
         return "white" if self.theme_mode == "Light" else "#121212"
-
-    @property
-    def node_color(self) -> str:
-        return "#2563eb" if self.theme_mode == "Light" else "#60a5fa"
 
 
 # ==========================================
@@ -106,11 +103,12 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Typography & Canvas")
-    cfg.label_size  = st.slider("Font Size", 8, 30, cfg.label_size)
-    cfg.label_color = st.color_picker("Font Color", value=cfg.label_color)
-    cfg.fig_width   = st.number_input("Canvas Width (px)", value=cfg.fig_width)
-    cfg.fig_height  = st.number_input("Canvas Height (px)", value=cfg.fig_height)
-    cfg.value_unit  = st.text_input("Value Unit", cfg.value_unit)
+    cfg.label_size         = st.slider("Font Size", 8, 30, cfg.label_size)
+    cfg.label_color        = st.color_picker("Font Color", value=cfg.label_color)
+    cfg.default_node_color = st.color_picker("Default Node Color", value=cfg.default_node_color)
+    cfg.fig_width          = st.number_input("Canvas Width (px)", value=cfg.fig_width)
+    cfg.fig_height         = st.number_input("Canvas Height (px)", value=cfg.fig_height)
+    cfg.value_unit         = st.text_input("Value Unit", cfg.value_unit)
 
 
 # ==========================================
@@ -147,29 +145,43 @@ def interpolate_rgb(val: float, min_v: float, max_v: float,
     return f"rgba({res[0]}, {res[1]}, {res[2]}, {opacity})"
 
 
-def get_link_color(input_val, cfg: SankeyConfig) -> str:
-    """Resolve a user-supplied color/value token to an rgba string."""
+def get_link_color(input_val, cfg: SankeyConfig, opacity_override: float = None) -> str:
+    """Resolve a user-supplied color/value token to an rgba string.
+    Pass opacity_override to use a different opacity (e.g. for ghost links)."""
+    opacity = opacity_override if opacity_override is not None else cfg.node_opacity
     if not input_val:
-        return f"rgba(150, 150, 150, {cfg.node_opacity})"
+        return f"rgba(150, 150, 150, {opacity})"
     clean_str = str(input_val).strip().lower()
     if clean_str == "elec":
-        return f"rgba(0, 200, 0, {cfg.node_opacity})"
+        return f"rgba(0, 200, 0, {opacity})"
     if clean_str == "black":
-        return f"rgba(0, 0, 0, {cfg.node_opacity})"
+        return f"rgba(0, 0, 0, {opacity})"
     if clean_str.startswith('#'):
         try:
             r, g, b = hex_to_rgb(clean_str)
-            return f"rgba({r}, {g}, {b}, {cfg.node_opacity})"
+            return f"rgba({r}, {g}, {b}, {opacity})"
         except Exception:
-            return f"rgba(150, 150, 150, {cfg.node_opacity})"
+            return f"rgba(150, 150, 150, {opacity})"
     v, ok = safe_float(input_val)
     if not ok:
-        return f"rgba(150, 150, 150, {cfg.node_opacity})"
+        return f"rgba(150, 150, 150, {opacity})"
     if v >= cfg.mid_val:
         return interpolate_rgb(v, cfg.mid_val, cfg.high_val,
-                               cfg.mid_col, cfg.high_col, cfg.node_opacity)
+                               cfg.mid_col, cfg.high_col, opacity)
     return interpolate_rgb(v, cfg.low_val, cfg.mid_val,
-                           cfg.low_col, cfg.mid_col, cfg.node_opacity)
+                           cfg.low_col, cfg.mid_col, opacity)
+
+
+def get_node_colors(labels: list, node_color_map: dict, cfg: SankeyConfig) -> list:
+    """
+    Build the per-node color list for Plotly.
+    Uses the per-node override from node_color_map if present and valid,
+    otherwise falls back to cfg.default_node_color.
+    """
+    return [
+        node_color_map.get(label, cfg.default_node_color)
+        for label in labels
+    ]
 
 
 def process_row(
@@ -184,12 +196,14 @@ def process_row(
     tgt: list,
     val: list,
     link_colors: list,
+    is_ghost: list,
     parse_warnings: list,
 ) -> None:
     """
     Shared logic for both input modes:
     - Parses and validates the value
     - Inverts direction for negative values
+    - Zero-value flows are rendered as ghost links (thin, faded)
     - Updates label index, src/tgt/val/link_colors in-place
     - Appends a warning message if the value could not be parsed
     """
@@ -204,16 +218,12 @@ def process_row(
             f"for flow `{source} → {target}`. Row skipped."
         )
         return
-    if v == 0:
-        parse_warnings.append(
-            f"⚠️ Zero-value flow `{source} → {target}` skipped "
-            f"(would produce a degenerate link)."
-        )
-        return
 
     # Negative value inversion: flip direction
     if v < 0:
         source, target, v = target, source, abs(v)
+
+    ghost = (v == 0)
 
     for node in (source, target):
         if node not in l2i:
@@ -222,8 +232,13 @@ def process_row(
 
     src.append(l2i[source])
     tgt.append(l2i[target])
-    val.append(v)
-    link_colors.append(get_link_color(color_val, cfg))
+    # Ghost links use a tiny epsilon so Plotly renders them as hairlines
+    val.append(v if not ghost else 0.001)
+    is_ghost.append(ghost)
+    link_colors.append(
+        get_link_color(color_val, cfg,
+                       opacity_override=cfg.ghost_opacity if ghost else None)
+    )
 
 
 # ==========================================
@@ -241,6 +256,7 @@ default_dataset = [
 
 src, tgt, val, labels, link_colors = [], [], [], [], []
 l2i: dict = {}
+is_ghost: list = []
 parse_warnings: list = []
 active_df = None   # kept for CSV export
 
@@ -258,7 +274,8 @@ if input_mode == "Text Input":
                 value_str=m.group(2), color_val=m.group(4),
                 cfg=cfg, labels=labels, l2i=l2i,
                 src=src, tgt=tgt, val=val,
-                link_colors=link_colors, parse_warnings=parse_warnings,
+                link_colors=link_colors, is_ghost=is_ghost,
+                parse_warnings=parse_warnings,
             )
 else:
     col_config = {
@@ -280,12 +297,50 @@ else:
             value_str=row['Value'], color_val=row.get('Color'),
             cfg=cfg, labels=labels, l2i=l2i,
             src=src, tgt=tgt, val=val,
-            link_colors=link_colors, parse_warnings=parse_warnings,
+            link_colors=link_colors, is_ghost=is_ghost,
+            parse_warnings=parse_warnings,
         )
 
 # Surface any parse warnings to the user
 for w in parse_warnings:
     st.warning(w)
+
+
+# ==========================================
+# MODULE 4b: NODE COLOR TABLE (OPTIONAL)
+# ==========================================
+# Auto-populated with one row per unique node from the flow data.
+# Pre-filled with cfg.default_node_color; user can override per node.
+# Collapsed by default so it stays out of the way.
+node_color_map: dict = {}
+
+if labels:
+    with st.expander("🎨 Node Colors (optional)", expanded=False):
+        st.caption(
+            "Override the color of individual nodes. "
+            "Use hex codes (e.g. #FF0000). "
+            "Rows left at the default color will use the Default Node Color set in the sidebar."
+        )
+        node_color_df = pd.DataFrame([
+            {"Node": label, "Color": cfg.default_node_color}
+            for label in labels
+        ])
+        edited_color_df = st.data_editor(
+            node_color_df,
+            num_rows="fixed",       # nodes come from flow table, not user-added
+            use_container_width=True,
+            column_config={
+                "Node":  st.column_config.TextColumn("Node", disabled=True),
+                "Color": st.column_config.TextColumn("Hex Color (e.g. #FF0000)"),
+            },
+            key="node_color_editor",
+        )
+        # Build the override map; ignore blank or malformed entries
+        for _, row in edited_color_df.iterrows():
+            node_name = str(row["Node"]).strip()
+            color_str = str(row["Color"]).strip()
+            if color_str.startswith("#") and len(color_str) in (4, 7):
+                node_color_map[node_name] = color_str
 
 
 # ==========================================
@@ -305,11 +360,15 @@ if labels:
         ]
         meta = [[labels[i], node_in[i], node_out[i]] for i in range(len(labels))]
 
-        # Per-link customdata: [source_name, target_name] for each link
+        # Per-link customdata: [source_name, target_name, display_value]
+        # Ghost links store 0 as display value so the tooltip shows 0, not 0.001
         link_customdata = [
-            [labels[s], labels[t]]
-            for s, t in zip(src, tgt)
+            [labels[s], labels[t], 0 if is_ghost[i] else val[i]]
+            for i, (s, t) in enumerate(zip(src, tgt))
         ]
+
+        # Resolve per-node colors: override map → sidebar default
+        node_colors = get_node_colors(labels, node_color_map, cfg)
 
         fig = go.Figure(data=[go.Sankey(
             orientation=cfg.orientation,
@@ -320,7 +379,7 @@ if labels:
                 thickness=cfg.node_thickness,
                 label=display_labels,
                 align=cfg.node_alignment,
-                color=cfg.node_color,
+                color=node_colors,
                 line=dict(color=cfg.bg_color, width=1),
                 customdata=meta,
                 hovertemplate=(
@@ -338,7 +397,7 @@ if labels:
                 customdata=link_customdata,
                 hovertemplate=(
                     '<b>%{customdata[0]}</b> → <b>%{customdata[1]}</b><br>'
-                    'Flow: %{value:.0f} ' + cfg.value_unit + '<extra></extra>'
+                    'Flow: %{customdata[2]:.0f} ' + cfg.value_unit + '<extra></extra>'
                 ),
             ),
         )])
