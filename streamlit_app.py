@@ -19,7 +19,7 @@ class SankeyConfig:
     low_val: float = 5.0
     low_col: str = "#0000FF"
     node_alignment: str = "center"
-    node_arrangement: str = "snap"
+    node_arrangement: str = "freeform"
     v_margin: int = 100
     h_margin: int = 50
     node_spacing: int = 50
