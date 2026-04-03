@@ -172,6 +172,39 @@ def get_link_color(input_val, cfg: SankeyConfig, opacity_override: float = None)
                            cfg.low_col, cfg.mid_col, opacity)
 
 
+NAMED_COLORS: dict = {
+    "red": "#FF0000", "green": "#008000", "blue": "#0000FF",
+    "yellow": "#FFFF00", "orange": "#FFA500", "purple": "#800080",
+    "pink": "#FFC0CB", "brown": "#A52A2A", "black": "#000000",
+    "white": "#FFFFFF", "grey": "#808080", "gray": "#808080",
+    "cyan": "#00FFFF", "magenta": "#FF00FF", "lime": "#00FF00",
+    "navy": "#000080", "teal": "#008080", "maroon": "#800000",
+    "olive": "#808000", "coral": "#FF7F50", "salmon": "#FA8072",
+    "gold": "#FFD700", "indigo": "#4B0082", "violet": "#EE82EE",
+    "turquoise": "#40E0D0", "silver": "#C0C0C0", "beige": "#F5F5DC",
+    "lavender": "#E6E6FA", "khaki": "#F0E68C", "crimson": "#DC143C",
+}
+
+
+def resolve_node_color(color_str: str, fallback: str) -> str:
+    """
+    Resolve a user-supplied node color string to a hex code.
+    Accepts: hex codes (#RGB or #RRGGBB) and common color names.
+    Returns fallback if the input is blank or unrecognised.
+    """
+    s = color_str.strip().lower()
+    if not s:
+        return fallback
+    # Hex code
+    if s.startswith("#") and len(s) in (4, 7):
+        return s.upper()
+    # Named color
+    if s in NAMED_COLORS:
+        return NAMED_COLORS[s]
+    # Unrecognised — silently use fallback
+    return fallback
+
+
 def get_node_colors(labels: list, node_color_map: dict, cfg: SankeyConfig) -> list:
     """
     Build the per-node color list for Plotly.
@@ -248,10 +281,23 @@ st.subheader("Data Input")
 input_mode = st.radio("Input Method:", ["Interactive Table", "Text Input"], horizontal=True)
 
 default_dataset = [
-    {"Source": "Natural Gas", "Target": "Boiler",  "Value": "400",   "Color": "Black"},
-    {"Source": "Tank1",       "Target": "Tank2",   "Value": "-50,5", "Color": "60"},
-    {"Source": "Steam",       "Target": "Process", "Value": "88,3",  "Color": "160"},
-    {"Source": "Elec Grid",   "Target": "Chiller", "Value": "100",   "Color": "Elec"},
+    {"Source": "Gas",                     "Target": "Boiler",               "Value": "78",  "Color": "Black"},
+    {"Source": "Boiler",                  "Target": "Steam",                "Value": "67",  "Color": "200"},
+    {"Source": "Boiler",                  "Target": "Purge",                "Value": "1",   "Color": "170"},
+    {"Source": "Boiler",                  "Target": "Stack",                "Value": "10",  "Color": "Black"},
+    {"Source": "Steam",                   "Target": "Deaerator",            "Value": "2",   "Color": "200"},
+    {"Source": "Deaerator",               "Target": "Boiler",               "Value": "-4",  "Color": "105"},
+    {"Source": "Feedwater",               "Target": "Deaerator",            "Value": "60",  "Color": "20"},
+    {"Source": "Steam",                   "Target": "Process",              "Value": "0",   "Color": "200"},
+    {"Source": "Process",                 "Target": "Condensate Return",    "Value": "0",   "Color": "90"},
+    {"Source": "Process",                 "Target": "Cndnste Not Returned", "Value": "0",   "Color": "Black"},
+    {"Source": "Condensate Return",       "Target": "Deaerator",            "Value": "60",  "Color": "90"},
+    {"Source": "Process",                 "Target": "Chilled Water",        "Value": "60",  "Color": "20"},
+    {"Source": "Chilled Water",           "Target": "Chiller",              "Value": "20",  "Color": "10"},
+    {"Source": "Elec",                    "Target": "Chiller",              "Value": "80",  "Color": "Elec"},
+    {"Source": "Chiller",                 "Target": "HP",                   "Value": "27",  "Color": "30"},
+    {"Source": "Elec",                    "Target": "HP",                   "Value": "107", "Color": "Elec"},
+    {"Source": "HP",                      "Target": "Process",              "Value": "0",   "Color": "90"},
 ]
 
 src, tgt, val, labels, link_colors = [], [], [], [], []
@@ -318,7 +364,7 @@ if labels:
     with st.expander("🎨 Node Colors (optional)", expanded=False):
         st.caption(
             "Override the color of individual nodes. "
-            "Use hex codes (e.g. #FF0000). "
+            "Accepts hex codes (e.g. #FF0000) or color names (e.g. red, green, navy). "
             "Rows left at the default color will use the Default Node Color set in the sidebar."
         )
         node_color_df = pd.DataFrame([
@@ -331,16 +377,17 @@ if labels:
             use_container_width=True,
             column_config={
                 "Node":  st.column_config.TextColumn("Node", disabled=True),
-                "Color": st.column_config.TextColumn("Hex Color (e.g. #FF0000)"),
+                "Color": st.column_config.TextColumn("Color (hex or name)"),
             },
             key="node_color_editor",
         )
-        # Build the override map; ignore blank or malformed entries
+        # Build the override map using resolve_node_color so both hex and
+        # named colors are accepted; unrecognised values fall back to default
         for _, row in edited_color_df.iterrows():
             node_name = str(row["Node"]).strip()
-            color_str = str(row["Color"]).strip()
-            if color_str.startswith("#") and len(color_str) in (4, 7):
-                node_color_map[node_name] = color_str
+            resolved  = resolve_node_color(str(row["Color"]), fallback="")
+            if resolved:
+                node_color_map[node_name] = resolved
 
 
 # ==========================================
