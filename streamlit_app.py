@@ -45,10 +45,23 @@ class SankeyConfig:
 # MODULE 2: DEFAULTS
 # ==========================================
 DEFAULT_FLOWS = [
-    {"Source": "Natural Gas", "Target": "Boiler",  "Value": "400",   "Color": "Black"},
-    {"Source": "Tank1",       "Target": "Tank2",   "Value": "-50,5", "Color": "60"},
-    {"Source": "Steam",       "Target": "Process", "Value": "88,3",  "Color": "160"},
-    {"Source": "Elec Grid",   "Target": "Chiller", "Value": "100",   "Color": "Elec"},
+    {"Source": "Gas",               "Target": "Boiler",               "Value": "78",  "Color": "Black"},
+    {"Source": "Boiler",            "Target": "Steam",                "Value": "67",  "Color": "200"},
+    {"Source": "Boiler",            "Target": "Purge",                "Value": "1",   "Color": "170"},
+    {"Source": "Boiler",            "Target": "Stack",                "Value": "10",  "Color": "Black"},
+    {"Source": "Steam",             "Target": "Deaerator",            "Value": "6",   "Color": "200"},
+    {"Source": "Deaerator",         "Target": "Boiler",               "Value": "2",   "Color": "105"},
+    {"Source": "Feedwater",         "Target": "Deaerator",            "Value": "-4",  "Color": "20"},
+    {"Source": "Steam",             "Target": "Process",              "Value": "60",  "Color": "200"},
+    {"Source": "Process",           "Target": "Condensate Return",    "Value": "0",   "Color": "90"},
+    {"Source": "Process",           "Target": "Cndnste Not Returned", "Value": "0",   "Color": "Black"},
+    {"Source": "Condensate Return", "Target": "Deaerator",            "Value": "0",   "Color": "90"},
+    {"Source": "Process",           "Target": "Chilled Water",        "Value": "60",  "Color": "20"},
+    {"Source": "Chilled Water",     "Target": "Chiller",              "Value": "60",  "Color": "10"},
+    {"Source": "Elec",              "Target": "Chiller",              "Value": "20",  "Color": "Elec"},
+    {"Source": "Chiller",           "Target": "HP",                   "Value": "80",  "Color": "30"},
+    {"Source": "Elec",              "Target": "HP",                   "Value": "27",  "Color": "Elec"},
+    {"Source": "HP",                "Target": "Process",              "Value": "107", "Color": "90"},
 ]
 
 
@@ -544,7 +557,82 @@ if labels:
             margin=dict(l=cfg.h_margin, r=cfg.h_margin,
                         t=cfg.v_margin,  b=cfg.v_margin),
         )
-        st.plotly_chart(fig, use_container_width=False)
+
+        # --- Build gradient legend ---
+        def build_gradient_legend(cfg: SankeyConfig) -> go.Figure:
+            """
+            20-step colour bar from high (top) to low (bottom).
+            Rendered as a narrow Plotly figure with bar traces so it
+            matches the Sankey's background colour and requires no extra libs.
+            """
+            n_steps = 20
+            step_size = (cfg.high_val - cfg.low_val) / n_steps
+            bar_colors, tick_labels, tick_vals = [], [], []
+
+            for i in range(n_steps):
+                # value at the centre of each step, high → low top-to-bottom
+                v = cfg.high_val - (i + 0.5) * step_size
+                if v >= cfg.mid_val:
+                    c = interpolate_rgb(v, cfg.mid_val, cfg.high_val,
+                                        cfg.mid_col, cfg.high_col, 1.0)
+                else:
+                    c = interpolate_rgb(v, cfg.low_val, cfg.mid_val,
+                                        cfg.low_col, cfg.mid_col, 1.0)
+                # strip opacity — bar traces need rgb, not rgba
+                c = c.replace(", 1.0)", ")").replace("rgba", "rgb")
+                bar_colors.append(c)
+
+            # Axis tick labels: high at top (y=20), mid in middle, low at bottom (y=0)
+            tick_vals   = [0, n_steps / 2, n_steps]
+            tick_labels = [
+                str(int(cfg.low_val)),
+                str(int(cfg.mid_val)),
+                str(int(cfg.high_val)),
+            ]
+
+            legend_fig = go.Figure()
+            for i, color in enumerate(bar_colors):
+                legend_fig.add_trace(go.Bar(
+                    x=[1],
+                    y=[1],
+                    base=n_steps - i - 1,   # stack bottom-up so high is at top
+                    marker_color=color,
+                    marker_line_width=0,
+                    showlegend=False,
+                    hoverinfo="skip",
+                ))
+
+            legend_fig.update_layout(
+                width=80,
+                height=cfg.fig_height,
+                paper_bgcolor=cfg.bg_color,
+                plot_bgcolor=cfg.bg_color,
+                barmode="stack",
+                bargap=0,
+                margin=dict(l=0, r=30, t=cfg.v_margin, b=cfg.v_margin),
+                xaxis=dict(visible=False, range=[0, 1.5]),
+                yaxis=dict(
+                    tickvals=tick_vals,
+                    ticktext=tick_labels,
+                    tickfont=dict(color=cfg.label_color, size=cfg.label_size - 2),
+                    side="right",
+                    showgrid=False,
+                    zeroline=False,
+                    range=[0, n_steps],
+                ),
+            )
+            return legend_fig
+
+        legend_fig = build_gradient_legend(cfg)
+
+        # Render Sankey and legend side by side using columns
+        col_sankey, col_legend = st.columns(
+            [cfg.fig_width, 80], gap="small"
+        )
+        with col_sankey:
+            st.plotly_chart(fig, use_container_width=False)
+        with col_legend:
+            st.plotly_chart(legend_fig, use_container_width=False)
 
     except Exception as e:
         st.error(f"Execution Error: {e}")
