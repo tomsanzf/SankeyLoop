@@ -562,15 +562,15 @@ if labels:
         def build_gradient_legend(cfg: SankeyConfig) -> go.Figure:
             """
             20-step colour bar from high (top) to low (bottom).
-            Rendered as a narrow Plotly figure with bar traces so it
-            matches the Sankey's background colour and requires no extra libs.
+            Each step is one horizontal bar stacked vertically.
+            Tick labels show low / mid / high threshold values.
             """
             n_steps = 20
             step_size = (cfg.high_val - cfg.low_val) / n_steps
-            bar_colors, tick_labels, tick_vals = [], [], []
 
+            bar_colors = []
             for i in range(n_steps):
-                # value at the centre of each step, high → low top-to-bottom
+                # i=0 → top (high), i=19 → bottom (low)
                 v = cfg.high_val - (i + 0.5) * step_size
                 if v >= cfg.mid_val:
                     c = interpolate_rgb(v, cfg.mid_val, cfg.high_val,
@@ -578,24 +578,16 @@ if labels:
                 else:
                     c = interpolate_rgb(v, cfg.low_val, cfg.mid_val,
                                         cfg.low_col, cfg.mid_col, 1.0)
-                # strip opacity — bar traces need rgb, not rgba
-                c = c.replace(", 1.0)", ")").replace("rgba", "rgb")
+                # interpolate_rgb returns rgba(..., 1.0) — convert to rgb for bar traces
+                c = c.rsplit(",", 1)[0].replace("rgba", "rgb") + ")"
                 bar_colors.append(c)
-
-            # Axis tick labels: high at top (y=20), mid in middle, low at bottom (y=0)
-            tick_vals   = [0, n_steps / 2, n_steps]
-            tick_labels = [
-                str(int(cfg.low_val)),
-                str(int(cfg.mid_val)),
-                str(int(cfg.high_val)),
-            ]
 
             legend_fig = go.Figure()
             for i, color in enumerate(bar_colors):
                 legend_fig.add_trace(go.Bar(
-                    x=[1],
+                    x=[""],
                     y=[1],
-                    base=n_steps - i - 1,   # stack bottom-up so high is at top
+                    base=n_steps - i - 1,
                     marker_color=color,
                     marker_line_width=0,
                     showlegend=False,
@@ -603,32 +595,35 @@ if labels:
                 ))
 
             legend_fig.update_layout(
-                width=80,
+                width=70,
                 height=cfg.fig_height,
                 paper_bgcolor=cfg.bg_color,
                 plot_bgcolor=cfg.bg_color,
                 barmode="stack",
                 bargap=0,
-                margin=dict(l=0, r=30, t=cfg.v_margin, b=cfg.v_margin),
-                xaxis=dict(visible=False, range=[0, 1.5]),
+                margin=dict(l=0, r=40, t=cfg.v_margin, b=cfg.v_margin),
+                xaxis=dict(visible=False),
                 yaxis=dict(
-                    tickvals=tick_vals,
-                    ticktext=tick_labels,
-                    tickfont=dict(color=cfg.label_color, size=cfg.label_size - 2),
+                    tickvals=[0, n_steps / 2, n_steps],
+                    ticktext=[
+                        str(int(cfg.low_val)),
+                        str(int(cfg.mid_val)),
+                        str(int(cfg.high_val)),
+                    ],
+                    tickfont=dict(color=cfg.label_color, size=max(9, cfg.label_size - 2)),
                     side="right",
                     showgrid=False,
                     zeroline=False,
                     range=[0, n_steps],
+                    tickmode="array",
                 ),
             )
             return legend_fig
 
         legend_fig = build_gradient_legend(cfg)
 
-        # Render Sankey and legend side by side using columns
-        col_sankey, col_legend = st.columns(
-            [cfg.fig_width, 80], gap="small"
-        )
+        # Use a narrow fixed ratio for the legend column (≈70px out of total)
+        col_sankey, col_legend = st.columns([0.92, 0.08], gap="small")
         with col_sankey:
             st.plotly_chart(fig, use_container_width=False)
         with col_legend:
