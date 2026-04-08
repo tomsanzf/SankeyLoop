@@ -558,8 +558,8 @@ if labels:
                                     cfg.cold_low_col, cfg.cold_high_col, 1.0)
             bar_colors.append(c.rsplit(",", 1)[0].replace("rgba", "rgb") + ")")
 
-        # Proportional tick position for the switch temperature
-        mid_tick = n_steps * (cfg.high_val - cfg.mid_val) / total_range
+        # Proportional tick position for the switch temperature (measured from bottom)
+        mid_tick = n_steps * (cfg.mid_val - cfg.low_val) / total_range
 
         # --- Compose single figure: Sankey (left) + gradient bar (right) ---
         from plotly.subplots import make_subplots
