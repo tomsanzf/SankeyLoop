@@ -45,23 +45,10 @@ class SankeyConfig:
 # MODULE 2: DEFAULTS
 # ==========================================
 DEFAULT_FLOWS = [
-    {"Source": "Gas",               "Target": "Boiler",               "Value": "78",  "Color": "Black"},
-    {"Source": "Boiler",            "Target": "Steam",                "Value": "67",  "Color": "200"},
-    {"Source": "Boiler",            "Target": "Purge",                "Value": "1",   "Color": "170"},
-    {"Source": "Boiler",            "Target": "Stack",                "Value": "10",  "Color": "Black"},
-    {"Source": "Steam",             "Target": "Deaerator",            "Value": "2",   "Color": "200"},
-    {"Source": "Deaerator",         "Target": "Boiler",               "Value": "-4",  "Color": "105"},
-    {"Source": "Feedwater",         "Target": "Deaerator",            "Value": "60",  "Color": "20"},
-    {"Source": "Steam",             "Target": "Process",              "Value": "0",   "Color": "200"},
-    {"Source": "Process",           "Target": "Condensate Return",    "Value": "0",   "Color": "90"},
-    {"Source": "Process",           "Target": "Cndnste Not Returned", "Value": "0",   "Color": "Black"},
-    {"Source": "Condensate Return", "Target": "Deaerator",            "Value": "60",  "Color": "90"},
-    {"Source": "Process",           "Target": "Chilled Water",        "Value": "60",  "Color": "20"},
-    {"Source": "Chilled Water",     "Target": "Chiller",              "Value": "20",  "Color": "10"},
-    {"Source": "Elec",              "Target": "Chiller",              "Value": "80",  "Color": "Elec"},
-    {"Source": "Chiller",           "Target": "HP",                   "Value": "27",  "Color": "30"},
-    {"Source": "Elec",              "Target": "HP",                   "Value": "107", "Color": "Elec"},
-    {"Source": "HP",                "Target": "Process",              "Value": "0",   "Color": "90"},
+    {"Source": "Natural Gas", "Target": "Boiler",  "Value": "400",   "Color": "Black"},
+    {"Source": "Tank1",       "Target": "Tank2",   "Value": "-50,5", "Color": "60"},
+    {"Source": "Steam",       "Target": "Process", "Value": "88,3",  "Color": "160"},
+    {"Source": "Elec Grid",   "Target": "Chiller", "Value": "100",   "Color": "Elec"},
 ]
 
 
@@ -195,70 +182,73 @@ st.title("SankeyLoop")
 with st.sidebar:
     st.header("Parameters")
 
-    # --- Import ---
-    st.subheader("💾 Import / Export")
-    uploaded = st.file_uploader("Import Config CSV", type="csv",
-                                 label_visibility="collapsed")
-    if uploaded is not None:
-        try:
-            parsed = parse_import_csv(uploaded.read().decode("utf-8"))
-            # Push config values into session_state
-            for k, v in parsed["config"].items():
-                st.session_state[k] = v
-            # Push flows and node colors
-            st.session_state["flows_df"]       = parsed["flows"]
-            st.session_state["node_colors_raw"] = parsed["node_colors"]
-            st.success("Configuration imported successfully.")
-            st.rerun()
-        except ValueError as e:
-            st.error(f"Import failed: {e}")
+    with st.expander("💾 Import / Export", expanded=False):
+        uploaded = st.file_uploader("Import Config CSV", type="csv",
+                                     label_visibility="collapsed")
+        if uploaded is not None:
+            try:
+                parsed = parse_import_csv(uploaded.read().decode("utf-8"))
+                for k, v in parsed["config"].items():
+                    st.session_state[k] = v
+                st.session_state["flows_df"]        = parsed["flows"]
+                st.session_state["node_colors_raw"] = parsed["node_colors"]
+                st.success("Configuration imported successfully.")
+                st.rerun()
+            except ValueError as e:
+                st.error(f"Import failed: {e}")
 
-    st.divider()
-    st.subheader("UI Theme")
-    st.radio("Theme", ["Light", "Dark"],
-             key="theme_mode")
+        # Export button lives here too, next to import
+        if "flows_df" in st.session_state:
+            export_csv = build_export_csv(
+                st.session_state["flows_df"],
+                st.session_state.get("node_colors_raw", {}),
+            )
+            st.download_button(
+                "⬇️ Export Full Configuration (CSV)",
+                data=export_csv,
+                file_name="sankeyloop_config.csv",
+                mime="text/csv",
+            )
 
-    st.divider()
-    st.subheader("Flow Orientation")
-    st.radio("Direction", ["Horizontal", "Vertical"],
-             horizontal=True, key="_orientation_label")
+    with st.expander("🎨 UI Theme", expanded=False):
+        st.radio("Theme", ["Light", "Dark"], key="theme_mode")
 
-    st.divider()
-    st.subheader("🔥 Thermal Gradient")
-    col_h1, col_h2 = st.columns(2)
-    with col_h1: st.number_input("High Threshold", key="high_val")
-    with col_h2: st.color_picker("High Color",     key="high_col")
-    col_m1, col_m2 = st.columns(2)
-    with col_m1: st.number_input("Mid Threshold",  key="mid_val")
-    with col_m2: st.color_picker("Mid Color",      key="mid_col")
-    col_l1, col_l2 = st.columns(2)
-    with col_l1: st.number_input("Low Threshold",  key="low_val")
-    with col_l2: st.color_picker("Low Color",      key="low_col")
+    with st.expander("🔀 Flow Orientation", expanded=False):
+        st.radio("Direction", ["Horizontal", "Vertical"],
+                 horizontal=True, key="_orientation_label")
 
-    st.divider()
-    st.subheader("Layout & Scaling")
-    st.radio("Node Alignment", ["Justify", "Left", "Center", "Right"],
-             horizontal=True, key="_node_alignment_label")
-    st.selectbox("Node Arrangement", ["Snap", "Perpendicular", "Freeform"],
-                 key="_node_arrangement_label")
-    st.slider("Vertical Margin (Scaling)",  0, 500, key="v_margin")
-    st.slider("Horizontal Margin (Padding)", 0, 500, key="h_margin")
+    with st.expander("🔥 Thermal Gradient", expanded=False):
+        col_h1, col_h2 = st.columns(2)
+        with col_h1: st.number_input("High Threshold", key="high_val")
+        with col_h2: st.color_picker("High Color",     key="high_col")
+        col_m1, col_m2 = st.columns(2)
+        with col_m1: st.number_input("Mid Threshold",  key="mid_val")
+        with col_m2: st.color_picker("Mid Color",      key="mid_col")
+        col_l1, col_l2 = st.columns(2)
+        with col_l1: st.number_input("Low Threshold",  key="low_val")
+        with col_l2: st.color_picker("Low Color",      key="low_col")
 
-    st.divider()
-    st.subheader("Visual Geometry")
-    st.slider("Node Pad (Gap)",    0, 200, key="node_spacing")
-    st.slider("Node Width",        5,  50, key="node_thickness")
-    st.slider("Link Opacity",      0.1, 1.0, key="node_opacity")
-    st.slider("Arrow Head Size",   0,  50, key="arrow_size")
+    with st.expander("📐 Layout & Scaling", expanded=False):
+        st.radio("Node Alignment", ["Justify", "Left", "Center", "Right"],
+                 horizontal=True, key="_node_alignment_label")
+        st.selectbox("Node Arrangement", ["Snap", "Perpendicular", "Freeform"],
+                     key="_node_arrangement_label")
+        st.slider("Vertical Margin (Scaling)",   0, 500, key="v_margin")
+        st.slider("Horizontal Margin (Padding)", 0, 500, key="h_margin")
 
-    st.divider()
-    st.subheader("Typography & Canvas")
-    st.slider("Font Size",         8,  30, key="label_size")
-    st.color_picker("Font Color",         key="label_color")
-    st.color_picker("Default Node Color", key="default_node_color")
-    st.number_input("Canvas Width (px)",  key="fig_width")
-    st.number_input("Canvas Height (px)", key="fig_height")
-    st.text_input("Value Unit",           key="value_unit")
+    with st.expander("📏 Visual Geometry", expanded=False):
+        st.slider("Node Pad (Gap)",  0,   200, key="node_spacing")
+        st.slider("Node Width",      5,    50, key="node_thickness")
+        st.slider("Link Opacity",    0.1,  1.0, key="node_opacity")
+        st.slider("Arrow Head Size", 0,    50, key="arrow_size")
+
+    with st.expander("🖋️ Typography & Canvas", expanded=False):
+        st.slider("Font Size",            8,  30, key="label_size")
+        st.color_picker("Font Color",         key="label_color")
+        st.color_picker("Default Node Color", key="default_node_color")
+        st.number_input("Canvas Width (px)",  key="fig_width")
+        st.number_input("Canvas Height (px)", key="fig_height")
+        st.text_input("Value Unit",           key="value_unit")
 
 
 # Derive the two enum-style fields from their radio/selectbox widgets
@@ -555,18 +545,6 @@ if labels:
                         t=cfg.v_margin,  b=cfg.v_margin),
         )
         st.plotly_chart(fig, use_container_width=False)
-
-        # --- Export button (always visible once diagram exists) ---
-        export_csv = build_export_csv(
-            st.session_state["flows_df"],
-            st.session_state.get("node_colors_raw", {}),
-        )
-        st.download_button(
-            "⬇️ Export Full Configuration (CSV)",
-            data=export_csv,
-            file_name="sankeyloop_config.csv",
-            mime="text/csv",
-        )
 
     except Exception as e:
         st.error(f"Execution Error: {e}")
