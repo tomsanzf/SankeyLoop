@@ -560,17 +560,11 @@ if labels:
 
         # --- Build gradient legend ---
         def build_gradient_legend(cfg: SankeyConfig) -> go.Figure:
-            """
-            20-step colour bar from high (top) to low (bottom).
-            Each step is one horizontal bar stacked vertically.
-            Tick labels show low / mid / high threshold values.
-            """
             n_steps = 20
             step_size = (cfg.high_val - cfg.low_val) / n_steps
 
             bar_colors = []
             for i in range(n_steps):
-                # i=0 → top (high), i=19 → bottom (low)
                 v = cfg.high_val - (i + 0.5) * step_size
                 if v >= cfg.mid_val:
                     c = interpolate_rgb(v, cfg.mid_val, cfg.high_val,
@@ -578,7 +572,6 @@ if labels:
                 else:
                     c = interpolate_rgb(v, cfg.low_val, cfg.mid_val,
                                         cfg.low_col, cfg.mid_col, 1.0)
-                # interpolate_rgb returns rgba(..., 1.0) — convert to rgb for bar traces
                 c = c.rsplit(",", 1)[0].replace("rgba", "rgb") + ")"
                 bar_colors.append(c)
 
@@ -595,13 +588,12 @@ if labels:
                 ))
 
             legend_fig.update_layout(
-                width=70,
                 height=cfg.fig_height,
                 paper_bgcolor=cfg.bg_color,
                 plot_bgcolor=cfg.bg_color,
                 barmode="stack",
                 bargap=0,
-                margin=dict(l=0, r=40, t=cfg.v_margin, b=cfg.v_margin),
+                margin=dict(l=5, r=5, t=cfg.v_margin, b=cfg.v_margin),
                 xaxis=dict(visible=False),
                 yaxis=dict(
                     tickvals=[0, n_steps / 2, n_steps],
@@ -610,7 +602,8 @@ if labels:
                         str(int(cfg.mid_val)),
                         str(int(cfg.high_val)),
                     ],
-                    tickfont=dict(color=cfg.label_color, size=max(9, cfg.label_size - 2)),
+                    tickfont=dict(color=cfg.label_color,
+                                  size=max(9, cfg.label_size - 2)),
                     side="right",
                     showgrid=False,
                     zeroline=False,
@@ -622,12 +615,18 @@ if labels:
 
         legend_fig = build_gradient_legend(cfg)
 
-        # Use a narrow fixed ratio for the legend column (≈70px out of total)
-        col_sankey, col_legend = st.columns([0.92, 0.08], gap="small")
+        # Inject CSS to remove the default gap/padding between columns
+        st.markdown("""
+            <style>
+            div[data-testid="column"] { padding: 0 !important; }
+            </style>
+        """, unsafe_allow_html=True)
+
+        col_sankey, col_legend = st.columns([11, 1], gap="small")
         with col_sankey:
             st.plotly_chart(fig, use_container_width=False)
         with col_legend:
-            st.plotly_chart(legend_fig, use_container_width=False)
+            st.plotly_chart(legend_fig, use_container_width=True)
 
     except Exception as e:
         st.error(f"Execution Error: {e}")
