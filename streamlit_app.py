@@ -15,11 +15,12 @@ class SankeyConfig:
     theme_mode: str = "Light"
     orientation: str = "h"
     high_val: float = 180.0
-    high_col: str = "#FF0000"
+    hot_high_col: str = "#FF0000"
+    hot_low_col: str = "#FFFF00"
     mid_val: float = 45.0
-    mid_col: str = "#FFA500"
+    cold_high_col: str = "#0000FF"
+    cold_low_col: str = "#800080"
     low_val: float = 5.0
-    low_col: str = "#0000FF"
     node_alignment: str = "center"
     node_arrangement: str = "snap"
     v_margin: int = 100
@@ -231,15 +232,19 @@ with st.sidebar:
                  horizontal=True, key="_orientation_label")
 
     with st.expander("🔥 Thermal Gradient", expanded=False):
+        st.caption("Hot range (above switch temperature)")
         col_h1, col_h2 = st.columns(2)
         with col_h1: st.number_input("High Threshold", key="high_val")
-        with col_h2: st.color_picker("High Color",     key="high_col")
-        col_m1, col_m2 = st.columns(2)
-        with col_m1: st.number_input("Mid Threshold",  key="mid_val")
-        with col_m2: st.color_picker("Mid Color",      key="mid_col")
-        col_l1, col_l2 = st.columns(2)
-        with col_l1: st.number_input("Low Threshold",  key="low_val")
-        with col_l2: st.color_picker("Low Color",      key="low_col")
+        with col_h2: st.color_picker("Hot High Color", key="hot_high_col")
+        col_hl1, col_hl2 = st.columns(2)
+        with col_hl1: st.number_input("Switch Temperature", key="mid_val")
+        with col_hl2: st.color_picker("Hot Low Color",  key="hot_low_col")
+        st.caption("Cold range (below switch temperature)")
+        col_ch1, col_ch2 = st.columns(2)
+        with col_ch1: st.color_picker("Cold High Color", key="cold_high_col")
+        col_cl1, col_cl2 = st.columns(2)
+        with col_cl1: st.number_input("Low Threshold",  key="low_val")
+        with col_cl2: st.color_picker("Cold Low Color",  key="cold_low_col")
 
     with st.expander("📐 Layout & Scaling", expanded=False):
         st.radio("Node Alignment", ["Justify", "Left", "Center", "Right"],
@@ -329,9 +334,9 @@ def get_link_color(input_val, cfg: SankeyConfig,
         return f"rgba(150, 150, 150, {opacity})"
     if v >= cfg.mid_val:
         return interpolate_rgb(v, cfg.mid_val, cfg.high_val,
-                               cfg.mid_col, cfg.high_col, opacity)
+                               cfg.hot_low_col, cfg.hot_high_col, opacity)
     return interpolate_rgb(v, cfg.low_val, cfg.mid_val,
-                           cfg.low_col, cfg.mid_col, opacity)
+                           cfg.cold_low_col, cfg.cold_high_col, opacity)
 
 
 NAMED_COLORS: dict = {
@@ -522,19 +527,23 @@ if labels:
         ]
         node_colors = get_node_colors(labels, node_color_map, cfg)
 
-        # --- Build gradient bar colours (20 steps, high→low) ---
+        # --- Build gradient bar colours (n_steps, high→low) ---
         n_steps = 20
-        step_size = (cfg.high_val - cfg.low_val) / n_steps
+        total_range = cfg.high_val - cfg.low_val
+        step_size = total_range / n_steps
         bar_colors = []
         for i in range(n_steps):
             v = cfg.high_val - (i + 0.5) * step_size
             if v >= cfg.mid_val:
                 c = interpolate_rgb(v, cfg.mid_val, cfg.high_val,
-                                    cfg.mid_col, cfg.high_col, 1.0)
+                                    cfg.hot_low_col, cfg.hot_high_col, 1.0)
             else:
                 c = interpolate_rgb(v, cfg.low_val, cfg.mid_val,
-                                    cfg.low_col, cfg.mid_col, 1.0)
+                                    cfg.cold_low_col, cfg.cold_high_col, 1.0)
             bar_colors.append(c.rsplit(",", 1)[0].replace("rgba", "rgb") + ")")
+
+        # Proportional tick position for the switch temperature
+        mid_tick = n_steps * (cfg.high_val - cfg.mid_val) / total_range
 
         # --- Compose single figure: Sankey (left) + gradient bar (right) ---
         from plotly.subplots import make_subplots
@@ -602,7 +611,7 @@ if labels:
         # Style the gradient bar's axes
         combined.update_xaxes(visible=False, row=1, col=2)
         combined.update_yaxes(
-            tickvals=[0, n_steps / 2, n_steps],
+            tickvals=[0, mid_tick, n_steps],
             ticktext=[
                 str(int(cfg.low_val)),
                 str(int(cfg.mid_val)),
