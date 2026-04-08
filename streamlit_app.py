@@ -522,7 +522,32 @@ if labels:
         ]
         node_colors = get_node_colors(labels, node_color_map, cfg)
 
-        fig = go.Figure(data=[go.Sankey(
+        # --- Build gradient bar colours (20 steps, high→low) ---
+        n_steps = 20
+        step_size = (cfg.high_val - cfg.low_val) / n_steps
+        bar_colors = []
+        for i in range(n_steps):
+            v = cfg.high_val - (i + 0.5) * step_size
+            if v >= cfg.mid_val:
+                c = interpolate_rgb(v, cfg.mid_val, cfg.high_val,
+                                    cfg.mid_col, cfg.high_col, 1.0)
+            else:
+                c = interpolate_rgb(v, cfg.low_val, cfg.mid_val,
+                                    cfg.low_col, cfg.mid_col, 1.0)
+            bar_colors.append(c.rsplit(",", 1)[0].replace("rgba", "rgb") + ")")
+
+        # --- Compose single figure: Sankey (left) + gradient bar (right) ---
+        from plotly.subplots import make_subplots
+
+        combined = make_subplots(
+            rows=1, cols=2,
+            column_widths=[0.94, 0.06],
+            horizontal_spacing=0.0,
+            specs=[[{"type": "sankey"}, {"type": "bar"}]],
+        )
+
+        # Sankey trace
+        combined.add_trace(go.Sankey(
             orientation=cfg.orientation,
             arrangement=cfg.node_arrangement,
             textfont=dict(color=cfg.label_color, size=cfg.label_size),
@@ -549,84 +574,51 @@ if labels:
                     'Flow: %{customdata[2]:.0f} ' + cfg.value_unit + '<extra></extra>'
                 ),
             ),
-        )])
+        ), row=1, col=1)
 
-        fig.update_layout(
-            width=cfg.fig_width, height=cfg.fig_height,
-            paper_bgcolor=cfg.bg_color, plot_bgcolor=cfg.bg_color,
+        # Gradient bar traces (one per step, stacked)
+        for i, color in enumerate(bar_colors):
+            combined.add_trace(go.Bar(
+                x=[""],
+                y=[1],
+                base=n_steps - i - 1,
+                marker_color=color,
+                marker_line_width=0,
+                showlegend=False,
+                hoverinfo="skip",
+            ), row=1, col=2)
+
+        combined.update_layout(
+            width=cfg.fig_width,
+            height=cfg.fig_height,
+            paper_bgcolor=cfg.bg_color,
+            plot_bgcolor=cfg.bg_color,
+            barmode="stack",
+            bargap=0,
             margin=dict(l=cfg.h_margin, r=cfg.h_margin,
                         t=cfg.v_margin,  b=cfg.v_margin),
         )
 
-        # --- Build gradient legend ---
-        def build_gradient_legend(cfg: SankeyConfig) -> go.Figure:
-            n_steps = 20
-            step_size = (cfg.high_val - cfg.low_val) / n_steps
+        # Style the gradient bar's axes
+        combined.update_xaxes(visible=False, row=1, col=2)
+        combined.update_yaxes(
+            tickvals=[0, n_steps / 2, n_steps],
+            ticktext=[
+                str(int(cfg.low_val)),
+                str(int(cfg.mid_val)),
+                str(int(cfg.high_val)),
+            ],
+            tickfont=dict(color=cfg.label_color,
+                          size=max(9, cfg.label_size - 2)),
+            side="right",
+            showgrid=False,
+            zeroline=False,
+            range=[0, n_steps],
+            tickmode="array",
+            row=1, col=2,
+        )
 
-            bar_colors = []
-            for i in range(n_steps):
-                v = cfg.high_val - (i + 0.5) * step_size
-                if v >= cfg.mid_val:
-                    c = interpolate_rgb(v, cfg.mid_val, cfg.high_val,
-                                        cfg.mid_col, cfg.high_col, 1.0)
-                else:
-                    c = interpolate_rgb(v, cfg.low_val, cfg.mid_val,
-                                        cfg.low_col, cfg.mid_col, 1.0)
-                c = c.rsplit(",", 1)[0].replace("rgba", "rgb") + ")"
-                bar_colors.append(c)
-
-            legend_fig = go.Figure()
-            for i, color in enumerate(bar_colors):
-                legend_fig.add_trace(go.Bar(
-                    x=[""],
-                    y=[1],
-                    base=n_steps - i - 1,
-                    marker_color=color,
-                    marker_line_width=0,
-                    showlegend=False,
-                    hoverinfo="skip",
-                ))
-
-            legend_fig.update_layout(
-                height=cfg.fig_height,
-                paper_bgcolor=cfg.bg_color,
-                plot_bgcolor=cfg.bg_color,
-                barmode="stack",
-                bargap=0,
-                margin=dict(l=5, r=5, t=cfg.v_margin, b=cfg.v_margin),
-                xaxis=dict(visible=False),
-                yaxis=dict(
-                    tickvals=[0, n_steps / 2, n_steps],
-                    ticktext=[
-                        str(int(cfg.low_val)),
-                        str(int(cfg.mid_val)),
-                        str(int(cfg.high_val)),
-                    ],
-                    tickfont=dict(color=cfg.label_color,
-                                  size=max(9, cfg.label_size - 2)),
-                    side="right",
-                    showgrid=False,
-                    zeroline=False,
-                    range=[0, n_steps],
-                    tickmode="array",
-                ),
-            )
-            return legend_fig
-
-        legend_fig = build_gradient_legend(cfg)
-
-        # Inject CSS to remove the default gap/padding between columns
-        st.markdown("""
-            <style>
-            div[data-testid="column"] { padding: 0 !important; }
-            </style>
-        """, unsafe_allow_html=True)
-
-        col_sankey, col_legend = st.columns([11, 1], gap="small")
-        with col_sankey:
-            st.plotly_chart(fig, use_container_width=False)
-        with col_legend:
-            st.plotly_chart(legend_fig, use_container_width=True)
+        st.plotly_chart(combined, use_container_width=False)
 
     except Exception as e:
         st.error(f"Execution Error: {e}")
