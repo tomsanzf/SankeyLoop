@@ -204,8 +204,17 @@ with st.sidebar:
                 parsed = parse_import_csv(uploaded.read().decode("utf-8"))
                 for k, v in parsed["config"].items():
                     st.session_state[k] = v
+                    # Also update the radio/selectbox shadow keys so widgets reflect import
+                    if k == "orientation":
+                        st.session_state["_orientation_label"] = "Horizontal" if v == "h" else "Vertical"
+                    if k == "node_alignment":
+                        st.session_state["_node_alignment_label"] = v.capitalize()
+                    if k == "node_arrangement":
+                        st.session_state["_node_arrangement_label"] = v.capitalize()
                 st.session_state["flows_df"]        = parsed["flows"]
                 st.session_state["node_colors_raw"] = parsed["node_colors"]
+                # Clear the file uploader so it doesn't re-trigger on next rerun
+                st.session_state["_csv_uploader"] = None
                 st.success("Configuration imported successfully.")
                 st.rerun()
             except ValueError as e:
@@ -234,16 +243,16 @@ with st.sidebar:
     with st.expander("🔥 Thermal Gradient", expanded=False):
         st.caption("Hot range (above switch temperature)")
         col_h1, col_h2 = st.columns(2)
-        with col_h1: st.number_input("High Threshold", key="high_val")
+        with col_h1: st.number_input("High Threshold", key="high_val", format="%g")
         with col_h2: st.color_picker("Hot High Color", key="hot_high_col")
         col_hl1, col_hl2 = st.columns(2)
-        with col_hl1: st.number_input("Switch Temperature", key="mid_val")
+        with col_hl1: st.number_input("Switch Temperature", key="mid_val", format="%g")
         with col_hl2: st.color_picker("Hot Low Color",  key="hot_low_col")
         st.caption("Cold range (below switch temperature)")
         col_ch1, col_ch2 = st.columns(2)
         with col_ch1: st.color_picker("Cold High Color", key="cold_high_col")
         col_cl1, col_cl2 = st.columns(2)
-        with col_cl1: st.number_input("Low Threshold",  key="low_val")
+        with col_cl1: st.number_input("Low Threshold",  key="low_val", format="%g")
         with col_cl2: st.color_picker("Cold Low Color",  key="cold_low_col")
 
     with st.expander("📐 Layout & Scaling", expanded=False):
@@ -264,8 +273,8 @@ with st.sidebar:
         st.slider("Font Size",            8,  30, key="label_size")
         st.color_picker("Font Color",         key="label_color")
         st.color_picker("Default Node Color", key="default_node_color")
-        st.number_input("Canvas Width (px)",  key="fig_width")
-        st.number_input("Canvas Height (px)", key="fig_height")
+        st.number_input("Canvas Width (px)",  key="fig_width",  format="%d")
+        st.number_input("Canvas Height (px)", key="fig_height", format="%d")
         st.text_input("Value Unit",           key="value_unit")
 
 
@@ -366,8 +375,15 @@ def resolve_node_color(color_str: str, fallback: str) -> str:
 
 def get_node_colors(labels: list, node_color_map: dict,
                     cfg: SankeyConfig) -> list:
-    return [node_color_map.get(label, cfg.default_node_color)
-            for label in labels]
+    """Returns per-node color list. Falls back to cfg.default_node_color for
+    any node not explicitly overridden. Resolves the default through
+    resolve_node_color so hex OR named colors work."""
+    resolved_default = resolve_node_color(cfg.default_node_color,
+                                          fallback="#2563eb")
+    return [
+        node_color_map.get(label, resolved_default)
+        for label in labels
+    ]
 
 
 def process_row(
@@ -517,7 +533,7 @@ if labels:
             node_in[tgt[i]]  += val[i]
 
         display_labels = [
-            f"{l}<br>{int(round(max(node_in[i], node_out[i]), 0))} {cfg.value_unit}"
+            f"{l}<br>{int(round(max(node_in[i], node_out[i]), 0)):,} {cfg.value_unit}".replace(",", "\u2009")
             for i, l in enumerate(labels)
         ]
         meta = [[labels[i], node_in[i], node_out[i]] for i in range(len(labels))]
@@ -550,8 +566,8 @@ if labels:
 
         combined = make_subplots(
             rows=1, cols=2,
-            column_widths=[0.94, 0.06],
-            horizontal_spacing=0.0,
+            column_widths=[0.97, 0.03],
+            horizontal_spacing=0.01,
             specs=[[{"type": "sankey"}, {"type": "bar"}]],
         )
 
