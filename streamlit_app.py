@@ -200,25 +200,26 @@ with st.sidebar:
         uploaded = st.file_uploader("Import Config CSV", type="csv",
                                      label_visibility="collapsed")
         if uploaded is not None:
-            try:
-                parsed = parse_import_csv(uploaded.read().decode("utf-8"))
-                for k, v in parsed["config"].items():
-                    st.session_state[k] = v
-                    # Also update the radio/selectbox shadow keys so widgets reflect import
-                    if k == "orientation":
-                        st.session_state["_orientation_label"] = "Horizontal" if v == "h" else "Vertical"
-                    if k == "node_alignment":
-                        st.session_state["_node_alignment_label"] = v.capitalize()
-                    if k == "node_arrangement":
-                        st.session_state["_node_arrangement_label"] = v.capitalize()
-                st.session_state["flows_df"]        = parsed["flows"]
-                st.session_state["node_colors_raw"] = parsed["node_colors"]
-                # Clear the file uploader so it doesn't re-trigger on next rerun
-                st.session_state["_csv_uploader"] = None
-                st.success("Configuration imported successfully.")
-                st.rerun()
-            except ValueError as e:
-                st.error(f"Import failed: {e}")
+            # Guard: only process each file once. Compare by name+size to detect
+            # a new upload vs the same file still sitting in the uploader.
+            file_fingerprint = f"{uploaded.name}_{uploaded.size}"
+            if st.session_state.get("_last_import") != file_fingerprint:
+                try:
+                    parsed = parse_import_csv(uploaded.read().decode("utf-8"))
+                    for k, v in parsed["config"].items():
+                        st.session_state[k] = v
+                        if k == "orientation":
+                            st.session_state["_orientation_label"] = "Horizontal" if v == "h" else "Vertical"
+                        if k == "node_alignment":
+                            st.session_state["_node_alignment_label"] = v.capitalize()
+                        if k == "node_arrangement":
+                            st.session_state["_node_arrangement_label"] = v.capitalize()
+                    st.session_state["flows_df"]        = parsed["flows"]
+                    st.session_state["node_colors_raw"] = parsed["node_colors"]
+                    st.session_state["_last_import"]    = file_fingerprint
+                    st.success("✅ Configuration imported successfully.")
+                except ValueError as e:
+                    st.error(f"Import failed: {e}")
 
         # Export button lives here too, next to import
         if "flows_df" in st.session_state:
